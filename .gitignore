@@ -1,0 +1,19 @@
+# Build output
+backend/out/
+backend/target/
+
+# Runtime data
+data/*
+!data/.gitkeep
+
+# Local environment
+.env
+.tools/
+*.zip
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/

@@ -537,6 +537,9 @@ function renderScreenRolling(event, names) {
       <p class="eyebrow">Lucky Draw</p>
       <h2>${escapeHtml(event.title)}</h2>
       <div id="rollingName" class="rolling-name">Ready</div>
+      <div class="screen-actions">
+        <button id="screenRevealButton" type="button" class="screen-draw-button">公布中奖名单 / Reveal Winners</button>
+      </div>
       <p class="screen-note">抽奖进行中 / Drawing from registered participants...</p>
     </div>
   `;
@@ -587,18 +590,28 @@ async function renderScreenPage(eventId) {
             const submissions = await api(`/api/admin/events/${eventId}/submissions`);
             const names = submissions.map(submission => submission.name || submission.email || "Participant");
             stopRolling = renderScreenRolling(event, names);
-            let drawError = null;
-            const drawPromise = api(`/api/admin/events/${eventId}/draw`, { method: "POST", body: "" }).catch(error => {
-              drawError = error;
-            });
-            const minimumRolling = new Promise(resolve => setTimeout(resolve, 2400));
-            await Promise.all([drawPromise, minimumRolling]);
-            if (drawError) {
-              throw drawError;
+            const revealButton = document.querySelector("#screenRevealButton");
+            if (revealButton) {
+              revealButton.addEventListener("click", async () => {
+                revealButton.disabled = true;
+                revealButton.textContent = "开奖中... / Revealing...";
+                try {
+                  await api(`/api/admin/events/${eventId}/draw`, { method: "POST", body: "" });
+                  const latest = await api(`/api/events/${eventId}/results`);
+                  stopRolling();
+                  renderScreenCompleted(event, latest);
+                } catch (error) {
+                  stopRolling();
+                  await renderScreenPage(eventId);
+                  const nextMessage = document.querySelector("#screenDrawMessage");
+                  if (nextMessage) {
+                    nextMessage.textContent = error.message;
+                  } else {
+                    alert(error.message);
+                  }
+                }
+              });
             }
-            const latest = await api(`/api/events/${eventId}/results`);
-            stopRolling();
-            renderScreenCompleted(event, latest);
           } catch (error) {
             if (stopRolling) {
               stopRolling();

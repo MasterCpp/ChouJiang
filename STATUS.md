@@ -51,6 +51,7 @@ Planning and local workflow setup are complete. The first runnable application s
 - Added an admin-only start-draw control on the big-screen page so the presenter can draw and show results on the same screen.
 - Changed the admin start-draw action to open the big-screen page, where registered participant names roll before the final winner result appears.
 - Added admin event deletion from the event list, including related submissions, winners, and operation records.
+- Changed the big-screen presenter flow to two steps: start participant rolling first, then reveal winners with a second button press.
 
 ## Current Issue
 
@@ -147,6 +148,9 @@ All initial issues are done. Next step is manual product QA and customer demo pr
   - Temporary server create/delete check removed the event from the admin list.
   - Deleted event submission lookup returned 404.
   - Cloudflare public `main.js` contains the new delete button logic.
+- Two-step big-screen draw verified:
+  - `node --check frontend\public\main.js` completed successfully.
+  - `scripts\build.cmd` completed successfully.
 
 ## Local Commands
 

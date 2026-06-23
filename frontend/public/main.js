@@ -293,6 +293,20 @@ async function refreshWinners(eventId) {
       }
     });
   });
+  box.querySelectorAll("[data-delete-winner]").forEach(button => {
+    button.addEventListener("click", async () => {
+      const confirmed = window.confirm("确定删除这条中奖记录吗？/ Delete this winner record?");
+      if (!confirmed) {
+        return;
+      }
+      try {
+        await api(`/api/admin/events/${eventId}/winners/${button.dataset.deleteWinner}`, { method: "DELETE" });
+        await refreshWinners(eventId);
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+  });
 }
 
 function renderSubmissions(submissions) {
@@ -356,6 +370,7 @@ function renderWinners(winners) {
             <td>
               ${winner.status === "valid" ? `<button type="button" class="secondary" data-void="${winner.id}">作废</button>` : ""}
               ${winner.status === "voided" ? `<button type="button" class="secondary" data-redraw="${winner.id}">补抽</button>` : ""}
+              <button type="button" class="danger-button" data-delete-winner="${winner.id}">删除</button>
             </td>
           </tr>
         `).join("")}

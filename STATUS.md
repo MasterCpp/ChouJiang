@@ -52,6 +52,7 @@ Planning and local workflow setup are complete. The first runnable application s
 - Changed the admin start-draw action to open the big-screen page, where registered participant names roll before the final winner result appears.
 - Added admin event deletion from the event list, including related submissions, winners, and operation records.
 - Changed the big-screen presenter flow to two steps: start participant rolling first, then reveal winners with a second button press.
+- Added admin winner-record deletion from the winner list, with a `delete_winner` operation record.
 
 ## Current Issue
 
@@ -153,6 +154,11 @@ All initial issues are done. Next step is manual product QA and customer demo pr
   - `scripts\build.cmd` completed successfully.
 - Big-screen confirm-draw button copy updated to `确认抽奖 / Confirm Draw` per customer feedback.
 - Added `恭喜中奖 / Congratulations` copy above the big-screen winner list.
+- Winner-record deletion verified:
+  - `node --check frontend\public\main.js` completed successfully.
+  - `scripts\build.cmd` completed successfully.
+  - Temporary server smoke test created an event, submitted one participant, drew one winner, deleted the winner record, and confirmed the winner list returned `[]`.
+  - Operation records contained `delete_winner`.
 
 ## Local Commands
 

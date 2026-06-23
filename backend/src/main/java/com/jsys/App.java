@@ -221,6 +221,19 @@ public final class App {
             handleRedraw(exchange, eventStore, submissionStore, winnerStore, operationStore, parts[0], parts[2]);
             return;
         }
+        if (id.contains("/winners/")) {
+            String[] parts = id.split("/");
+            if (parts.length != 3 || !"winners".equals(parts[1])) {
+                send(exchange, 404, "application/json", "{\"error\":\"Not found\"}");
+                return;
+            }
+            if (!"DELETE".equals(method)) {
+                send(exchange, 405, "application/json", "{\"error\":\"Method not allowed\"}");
+                return;
+            }
+            handleDeleteWinner(exchange, eventStore, winnerStore, operationStore, parts[0], parts[2]);
+            return;
+        }
         if (id.contains("/")) {
             send(exchange, 404, "application/json", "{\"error\":\"Not found\"}");
             return;
@@ -441,6 +454,28 @@ public final class App {
         Winner replacement = winnerStore.create(eventId, eligible.get(0), "redraw", voidedWinnerId);
         operationStore.create(eventId, "redraw", replacement.id, "admin");
         send(exchange, 201, "application/json", winnerJson(replacement));
+    }
+
+    private static void handleDeleteWinner(
+            HttpExchange exchange,
+            EventStore eventStore,
+            WinnerStore winnerStore,
+            OperationStore operationStore,
+            String eventId,
+            String winnerId
+    ) throws IOException {
+        if (eventStore.find(eventId).isEmpty()) {
+            send(exchange, 404, "application/json", "{\"error\":\"Event not found.\"}");
+            return;
+        }
+        Optional<Winner> winner = winnerStore.find(eventId, winnerId);
+        if (winner.isEmpty()) {
+            send(exchange, 404, "application/json", "{\"error\":\"Winner not found.\"}");
+            return;
+        }
+        winnerStore.delete(eventId, winnerId);
+        operationStore.create(eventId, "delete_winner", winnerId, "admin");
+        send(exchange, 200, "application/json", "{\"ok\":true}");
     }
 
     private static List<Submission> eligibleSubmissions(
@@ -1113,6 +1148,16 @@ public final class App {
             }
             write(winners);
             return updated;
+        }
+
+        synchronized void delete(String eventId, String winnerId) throws IOException {
+            List<Winner> remaining = new ArrayList<>();
+            for (Winner winner : list()) {
+                if (!(winner.eventId.equals(eventId) && winner.id.equals(winnerId))) {
+                    remaining.add(winner);
+                }
+            }
+            write(remaining);
         }
 
         synchronized void deleteByEvent(String eventId) throws IOException {

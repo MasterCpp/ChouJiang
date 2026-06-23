@@ -152,6 +152,7 @@ All initial issues are done. Next step is manual product QA and customer demo pr
   - `node --check frontend\public\main.js` completed successfully.
   - `scripts\build.cmd` completed successfully.
 - Big-screen confirm-draw button copy updated to `确认抽奖 / Confirm Draw` per customer feedback.
+- Added `恭喜中奖 / Congratulations` copy above the big-screen winner list.
 
 ## Local Commands
 

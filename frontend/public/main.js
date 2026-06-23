@@ -509,6 +509,7 @@ function renderScreenCompleted(event, result) {
       <p class="eyebrow">Lucky Draw</p>
       <h2>${escapeHtml(event.title)}</h2>
       <div id="rollingName" class="rolling-name">Ready</div>
+      <div id="screenCongrats" class="screen-congrats hidden">恭喜中奖 / Congratulations</div>
       <ul id="screenWinners" class="screen-winners hidden">
         ${result.winners.map(winner => `<li>${escapeHtml(winner.name)}<span>${escapeHtml(winner.email)}</span></li>`).join("")}
       </ul>
@@ -516,6 +517,7 @@ function renderScreenCompleted(event, result) {
   `;
 
   const rollingName = document.querySelector("#rollingName");
+  const screenCongrats = document.querySelector("#screenCongrats");
   const screenWinners = document.querySelector("#screenWinners");
   const names = result.winners.map(winner => winner.name);
   let tick = 0;
@@ -526,6 +528,7 @@ function renderScreenCompleted(event, result) {
   setTimeout(() => {
     clearInterval(timer);
     rollingName.classList.add("hidden");
+    screenCongrats.classList.remove("hidden");
     screenWinners.classList.remove("hidden");
   }, 1500);
 }

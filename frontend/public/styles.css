@@ -558,6 +558,13 @@ td {
   font-weight: 800;
 }
 
+.screen-congrats {
+  color: var(--primary-dark);
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
 .screen-winners {
   display: grid;
   width: min(820px, 100%);

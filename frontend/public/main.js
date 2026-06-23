@@ -538,7 +538,7 @@ function renderScreenRolling(event, names) {
       <h2>${escapeHtml(event.title)}</h2>
       <div id="rollingName" class="rolling-name">Ready</div>
       <div class="screen-actions">
-        <button id="screenRevealButton" type="button" class="screen-draw-button">公布中奖名单 / Reveal Winners</button>
+        <button id="screenRevealButton" type="button" class="screen-draw-button">确认抽奖 / Confirm Draw</button>
       </div>
       <p class="screen-note">抽奖进行中 / Drawing from registered participants...</p>
     </div>

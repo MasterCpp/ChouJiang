@@ -151,6 +151,7 @@ All initial issues are done. Next step is manual product QA and customer demo pr
 - Two-step big-screen draw verified:
   - `node --check frontend\public\main.js` completed successfully.
   - `scripts\build.cmd` completed successfully.
+- Big-screen confirm-draw button copy updated to `确认抽奖 / Confirm Draw` per customer feedback.
 
 ## Local Commands
 

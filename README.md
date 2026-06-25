@@ -4,7 +4,7 @@ J_Sys is a multi-event H5 lucky draw system for small online or hybrid meetings.
 
 ## Current Status
 
-The project is currently in planning/scaffold preparation.
+The project has a runnable local/demo implementation. Initial issues are complete, and the app now includes dynamic per-event registration form configuration.
 
 Read first:
 
@@ -23,9 +23,11 @@ Read first:
   - Name
   - Job title
   - Email
-  - Satisfaction score from 1 to 10
-  - Most satisfying topic, single choice
-  - Expected future discussion, free text
+- Dynamic per-event questions:
+  - Score from 1 to 10
+  - Single choice
+  - Multiple choice
+  - Text answer
 - Chinese and English copy shown together.
 - One admin login.
 - One prize category.
@@ -97,8 +99,10 @@ There is no automated test suite yet. For the scaffold baseline, verify:
 - Admin login accepts the default credentials.
 - Invalid admin credentials are rejected.
 - Admin can create and edit an event.
+- Admin can configure event-specific registration questions.
 - Event validation rejects invalid winning count and empty single-choice options.
 - Public registration link accepts valid submissions.
+- Public registration renders dynamic event questions.
 - Duplicate email in the same event is rejected.
 - The same email can register for another event.
 - Public result link shows a waiting state before winners are drawn.
@@ -106,6 +110,7 @@ There is no automated test suite yet. For the scaffold baseline, verify:
 - Public result link shows valid winners after the draw.
 - Big-screen link shows waiting state before draw and winner display after draw.
 - Event export downloads an Excel-compatible CSV and records an export operation.
+- Event export includes dynamic question columns and answers.
 
 ## Runtime Data
 
@@ -130,10 +135,10 @@ Runtime data is ignored by git.
 - Export: `http://127.0.0.1:8080/api/admin/events/{eventId}/export`
 - Health: `http://127.0.0.1:8080/api/health`
 
-The first implementation task is tracked in:
+The latest implementation task is tracked in:
 
 ```text
-.scratch/issues/001-project-scaffold.md
+.scratch/issues/007-dynamic-registration-form.md
 ```
 
 ## Deployment Plan

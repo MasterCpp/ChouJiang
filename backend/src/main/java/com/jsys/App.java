@@ -355,8 +355,8 @@ public final class App {
             return;
         }
 
-        SubmissionInput input = SubmissionInput.from(readForm(exchange));
-        List<String> errors = input.validate();
+        SubmissionInput input = SubmissionInput.from(readForm(exchange), event.get().questions);
+        List<String> errors = input.validate(event.get().questions);
         if (submissionStore.existsEmail(eventId, input.email)) {
             errors.add("This email has already registered for this event.");
         }
@@ -513,21 +513,24 @@ public final class App {
 
         StringBuilder csv = new StringBuilder();
         csv.append('\ufeff');
-        csv.append(csvRow(List.of(
+        List<String> header = new ArrayList<>(List.of(
                 "Event ID",
                 "Event Title",
                 "Name",
                 "Job Title",
-                "Email",
-                "Satisfaction Score",
-                "Single-choice Answer",
-                "Future Discussion",
+                "Email"
+        ));
+        for (Question question : event.get().questions) {
+            header.add(question.label);
+        }
+        header.addAll(List.of(
                 "Winner Status",
                 "Winning Time",
                 "Void Status",
                 "Voided Time",
                 "Submission Time"
-        )));
+        ));
+        csv.append(csvRow(header));
 
         List<Winner> winners = winnerStore.listByEvent(eventId);
         for (Submission submission : submissionStore.listByEvent(eventId)) {
@@ -536,21 +539,24 @@ public final class App {
             String winningTime = winner.map(item -> item.createdAt).orElse("");
             String voidStatus = winner.map(item -> "voided".equals(item.status) ? "voided" : "").orElse("");
             String voidedTime = winner.map(item -> item.voidedAt).orElse("");
-            csv.append(csvRow(List.of(
+            List<String> row = new ArrayList<>(List.of(
                     event.get().id,
                     event.get().title,
                     submission.name,
                     submission.jobTitle,
-                    submission.email,
-                    Integer.toString(submission.satisfactionScore),
-                    submission.topicAnswer,
-                    submission.futureQuestion,
+                    submission.email
+            ));
+            for (Question question : event.get().questions) {
+                row.add(submission.answers.getOrDefault(question.id, ""));
+            }
+            row.addAll(List.of(
                     winnerStatus,
                     winningTime,
                     voidStatus,
                     voidedTime,
                     submission.createdAt
-            )));
+            ));
+            csv.append(csvRow(row));
         }
 
         Operation operation = operationStore.create(eventId, "export", eventId, "admin");
@@ -813,6 +819,7 @@ public final class App {
                 + "\"satisfactionScore\":" + submission.satisfactionScore + ","
                 + "\"topicAnswer\":\"" + json(submission.topicAnswer) + "\","
                 + "\"futureQuestion\":\"" + json(submission.futureQuestion) + "\","
+                + "\"answers\":" + answersJson(submission.answers) + ","
                 + "\"createdAt\":\"" + json(submission.createdAt) + "\""
                 + "}";
     }
@@ -825,6 +832,7 @@ public final class App {
                 + "\"topicQuestion\":\"" + json(event.topicQuestion) + "\","
                 + "\"topicOptions\":" + stringsJson(event.topicOptions) + ","
                 + "\"freeTextQuestion\":\"" + json(event.freeTextQuestion) + "\","
+                + "\"questions\":" + questionsJson(event.questions) + ","
                 + "\"privacyNotice\":\"" + json(event.privacyNotice) + "\","
                 + "\"winningCount\":" + event.winningCount + ","
                 + "\"status\":\"" + json(event.status) + "\","
@@ -833,6 +841,37 @@ public final class App {
                 + "\"createdAt\":\"" + json(event.createdAt) + "\","
                 + "\"updatedAt\":\"" + json(event.updatedAt) + "\""
                 + "}";
+    }
+
+    private static String questionsJson(List<Question> questions) {
+        StringBuilder builder = new StringBuilder("[");
+        for (int i = 0; i < questions.size(); i++) {
+            if (i > 0) {
+                builder.append(',');
+            }
+            Question question = questions.get(i);
+            builder.append("{")
+                    .append("\"id\":\"").append(json(question.id)).append("\",")
+                    .append("\"type\":\"").append(json(question.type)).append("\",")
+                    .append("\"label\":\"").append(json(question.label)).append("\",")
+                    .append("\"required\":").append(question.required).append(',')
+                    .append("\"options\":").append(stringsJson(question.options))
+                    .append("}");
+        }
+        return builder.append(']').toString();
+    }
+
+    private static String answersJson(Map<String, String> answers) {
+        StringBuilder builder = new StringBuilder("{");
+        int index = 0;
+        for (Map.Entry<String, String> entry : answers.entrySet()) {
+            if (index > 0) {
+                builder.append(',');
+            }
+            builder.append('"').append(json(entry.getKey())).append("\":\"").append(json(entry.getValue())).append('"');
+            index += 1;
+        }
+        return builder.append('}').toString();
     }
 
     private static String stringsJson(List<String> values) {
@@ -919,6 +958,7 @@ public final class App {
                     input.topicQuestion,
                     input.topicOptions,
                     input.freeTextQuestion,
+                    input.questions,
                     input.privacyNotice,
                     input.winningCount,
                     input.status,
@@ -939,6 +979,7 @@ public final class App {
                     input.topicQuestion,
                     input.topicOptions,
                     input.freeTextQuestion,
+                    input.questions,
                     input.privacyNotice,
                     input.winningCount,
                     input.status,
@@ -1027,6 +1068,7 @@ public final class App {
                     input.satisfactionScore,
                     input.topicAnswer,
                     input.futureQuestion,
+                    input.answers,
                     Instant.now().toString()
             );
             List<Submission> submissions = list();
@@ -1244,12 +1286,139 @@ public final class App {
         }
     }
 
+    private static final class Question {
+        static final String TYPE_SINGLE = "single";
+        static final String TYPE_MULTIPLE = "multiple";
+        static final String TYPE_TEXT = "text";
+        static final String TYPE_SCORE = "score";
+
+        final String id;
+        final String type;
+        final String label;
+        final boolean required;
+        final List<String> options;
+
+        Question(String id, String type, String label, boolean required, List<String> options) {
+            this.id = id == null || id.isBlank() ? UUID.randomUUID().toString() : id.trim();
+            this.type = type == null ? "" : type.trim();
+            this.label = label == null ? "" : label.trim();
+            this.required = required;
+            this.options = List.copyOf(options);
+        }
+
+        List<String> validate() {
+            List<String> errors = new ArrayList<>();
+            if (label.isBlank()) {
+                errors.add("Question title is required.");
+            }
+            if (!TYPE_SINGLE.equals(type) && !TYPE_MULTIPLE.equals(type) && !TYPE_TEXT.equals(type) && !TYPE_SCORE.equals(type)) {
+                errors.add("Question type must be single, multiple, text, or score.");
+            }
+            if ((TYPE_SINGLE.equals(type) || TYPE_MULTIPLE.equals(type)) && options.isEmpty()) {
+                errors.add("Choice question must have at least one option: " + label);
+            }
+            return errors;
+        }
+
+        static List<Question> defaultQuestions(String satisfactionQuestion, String topicQuestion, List<String> topicOptions, String freeTextQuestion) {
+            List<Question> questions = new ArrayList<>();
+            questions.add(new Question("score", TYPE_SCORE, satisfactionQuestion, true, List.of()));
+            questions.add(new Question("topic", TYPE_SINGLE, topicQuestion, true, topicOptions));
+            questions.add(new Question("future", TYPE_TEXT, freeTextQuestion, true, List.of()));
+            return questions;
+        }
+
+        static List<Question> parseConfig(String value) {
+            List<Question> questions = new ArrayList<>();
+            if (value == null || value.isBlank()) {
+                return questions;
+            }
+            for (String line : value.split("\\r?\\n")) {
+                if (line.isBlank()) {
+                    continue;
+                }
+                String[] parts = line.split("\\|", -1);
+                if (parts.length < 5) {
+                    continue;
+                }
+                List<String> options = new ArrayList<>();
+                String decodedOptions = decoded(parts[4]);
+                if (!decodedOptions.isBlank()) {
+                    for (String option : decodedOptions.split("\\n")) {
+                        if (!option.trim().isBlank()) {
+                            options.add(option.trim());
+                        }
+                    }
+                }
+                questions.add(new Question(
+                        decoded(parts[0]),
+                        decoded(parts[1]),
+                        decoded(parts[2]),
+                        Boolean.parseBoolean(decoded(parts[3])),
+                        options
+                ));
+            }
+            return questions;
+        }
+
+        static String serializeConfig(List<Question> questions) {
+            List<String> lines = new ArrayList<>();
+            for (Question question : questions) {
+                lines.add(String.join("|",
+                        encoded(question.id),
+                        encoded(question.type),
+                        encoded(question.label),
+                        encoded(Boolean.toString(question.required)),
+                        encoded(String.join("\n", question.options))
+                ));
+            }
+            return String.join("\n", lines);
+        }
+
+        static Map<String, String> parseAnswers(String value) {
+            Map<String, String> answers = new LinkedHashMap<>();
+            if (value == null || value.isBlank()) {
+                return answers;
+            }
+            for (String line : value.split("\\r?\\n")) {
+                if (line.isBlank()) {
+                    continue;
+                }
+                String[] parts = line.split("\\|", 2);
+                if (parts.length == 2) {
+                    answers.put(decoded(parts[0]), decoded(parts[1]));
+                }
+            }
+            return answers;
+        }
+
+        static String serializeAnswers(Map<String, String> answers) {
+            List<String> lines = new ArrayList<>();
+            for (Map.Entry<String, String> answer : answers.entrySet()) {
+                lines.add(encoded(answer.getKey()) + "|" + encoded(answer.getValue()));
+            }
+            return String.join("\n", lines);
+        }
+
+        private static String encoded(String value) {
+            return Base64.getUrlEncoder().withoutPadding().encodeToString((value == null ? "" : value).getBytes(StandardCharsets.UTF_8));
+        }
+
+        private static String decoded(String value) {
+            if (value == null || value.isBlank()) {
+                return "";
+            }
+            return new String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8);
+        }
+    }
+
     private static final class EventInput {
         final String title;
         final String satisfactionQuestion;
         final String topicQuestion;
         final List<String> topicOptions;
         final String freeTextQuestion;
+        final List<Question> questions;
         final String privacyNotice;
         final int winningCount;
         final String status;
@@ -1260,6 +1429,7 @@ public final class App {
                 String topicQuestion,
                 List<String> topicOptions,
                 String freeTextQuestion,
+                List<Question> questions,
                 String privacyNotice,
                 int winningCount,
                 String status
@@ -1269,6 +1439,7 @@ public final class App {
             this.topicQuestion = topicQuestion;
             this.topicOptions = topicOptions;
             this.freeTextQuestion = freeTextQuestion;
+            this.questions = List.copyOf(questions);
             this.privacyNotice = privacyNotice;
             this.winningCount = winningCount;
             this.status = status;
@@ -1294,12 +1465,21 @@ public final class App {
                 status = "active";
             }
 
+            String satisfactionQuestion = form.getOrDefault("satisfactionQuestion", "").trim();
+            String topicQuestion = form.getOrDefault("topicQuestion", "").trim();
+            String freeTextQuestion = form.getOrDefault("freeTextQuestion", "").trim();
+            List<Question> questions = Question.parseConfig(form.getOrDefault("questionsConfig", ""));
+            if (questions.isEmpty()) {
+                questions = Question.defaultQuestions(satisfactionQuestion, topicQuestion, options, freeTextQuestion);
+            }
+
             return new EventInput(
                     form.getOrDefault("title", "").trim(),
-                    form.getOrDefault("satisfactionQuestion", "").trim(),
-                    form.getOrDefault("topicQuestion", "").trim(),
+                    satisfactionQuestion,
+                    topicQuestion,
                     options,
-                    form.getOrDefault("freeTextQuestion", "").trim(),
+                    freeTextQuestion,
+                    questions,
                     form.getOrDefault("privacyNotice", "").trim(),
                     winningCount,
                     status
@@ -1323,6 +1503,12 @@ public final class App {
             if (freeTextQuestion.isBlank()) {
                 errors.add("Free-text question is required.");
             }
+            if (questions.isEmpty()) {
+                errors.add("At least one registration question is required.");
+            }
+            for (Question question : questions) {
+                errors.addAll(question.validate());
+            }
             if (privacyNotice.isBlank()) {
                 errors.add("Privacy notice is required.");
             }
@@ -1343,6 +1529,7 @@ public final class App {
         final int satisfactionScore;
         final String topicAnswer;
         final String futureQuestion;
+        final Map<String, String> answers;
 
         private SubmissionInput(
                 String name,
@@ -1350,7 +1537,8 @@ public final class App {
                 String email,
                 int satisfactionScore,
                 String topicAnswer,
-                String futureQuestion
+                String futureQuestion,
+                Map<String, String> answers
         ) {
             this.name = name;
             this.jobTitle = jobTitle;
@@ -1358,14 +1546,24 @@ public final class App {
             this.satisfactionScore = satisfactionScore;
             this.topicAnswer = topicAnswer;
             this.futureQuestion = futureQuestion;
+            this.answers = Map.copyOf(answers);
         }
 
-        static SubmissionInput from(Map<String, String> form) {
+        static SubmissionInput from(Map<String, String> form, List<Question> questions) {
             int score = -1;
             try {
                 score = Integer.parseInt(form.getOrDefault("satisfactionScore", "").trim());
             } catch (NumberFormatException ignored) {
                 // Validation reports this below.
+            }
+            Map<String, String> answers = new LinkedHashMap<>();
+            for (Question question : questions) {
+                answers.put(question.id, form.getOrDefault("answer_" + question.id, "").trim());
+            }
+            if (answers.isEmpty()) {
+                answers.put("score", form.getOrDefault("satisfactionScore", "").trim());
+                answers.put("topic", form.getOrDefault("topicAnswer", "").trim());
+                answers.put("future", form.getOrDefault("futureQuestion", "").trim());
             }
 
             return new SubmissionInput(
@@ -1374,11 +1572,12 @@ public final class App {
                     form.getOrDefault("email", "").trim(),
                     score,
                     form.getOrDefault("topicAnswer", "").trim(),
-                    form.getOrDefault("futureQuestion", "").trim()
+                    form.getOrDefault("futureQuestion", "").trim(),
+                    answers
             );
         }
 
-        List<String> validate() {
+        List<String> validate(List<Question> questions) {
             List<String> errors = new ArrayList<>();
             if (name.isBlank()) {
                 errors.add("Name is required.");
@@ -1391,14 +1590,29 @@ public final class App {
             } else if (!isValidEmail(email)) {
                 errors.add("Email format is invalid.");
             }
-            if (satisfactionScore < 1 || satisfactionScore > 10) {
-                errors.add("Satisfaction score must be between 1 and 10.");
-            }
-            if (topicAnswer.isBlank()) {
-                errors.add("Single-choice answer is required.");
-            }
-            if (futureQuestion.isBlank()) {
-                errors.add("Future discussion answer is required.");
+            for (Question question : questions) {
+                String answer = answers.getOrDefault(question.id, "");
+                if (question.required && answer.isBlank()) {
+                    errors.add("Question is required: " + question.label);
+                }
+                if ("score".equals(question.type) && !answer.isBlank()) {
+                    try {
+                        int answerScore = Integer.parseInt(answer);
+                        if (answerScore < 1 || answerScore > 10) {
+                            errors.add("Score answer must be between 1 and 10: " + question.label);
+                        }
+                    } catch (NumberFormatException error) {
+                        errors.add("Score answer must be a number: " + question.label);
+                    }
+                }
+                if (("single".equals(question.type) || "multiple".equals(question.type)) && !answer.isBlank()) {
+                    for (String item : answer.split("\\n")) {
+                        if (!question.options.contains(item)) {
+                            errors.add("Invalid option for question: " + question.label);
+                            break;
+                        }
+                    }
+                }
             }
             return errors;
         }
@@ -1417,6 +1631,7 @@ public final class App {
         final String topicQuestion;
         final List<String> topicOptions;
         final String freeTextQuestion;
+        final List<Question> questions;
         final String privacyNotice;
         final int winningCount;
         final String status;
@@ -1430,6 +1645,7 @@ public final class App {
                 String topicQuestion,
                 List<String> topicOptions,
                 String freeTextQuestion,
+                List<Question> questions,
                 String privacyNotice,
                 int winningCount,
                 String status,
@@ -1442,6 +1658,7 @@ public final class App {
             this.topicQuestion = topicQuestion;
             this.topicOptions = List.copyOf(topicOptions);
             this.freeTextQuestion = freeTextQuestion;
+            this.questions = List.copyOf(questions);
             this.privacyNotice = privacyNotice;
             this.winningCount = winningCount;
             this.status = status;
@@ -1457,6 +1674,7 @@ public final class App {
                     encoded(topicQuestion),
                     encoded(String.join("\n", topicOptions)),
                     encoded(freeTextQuestion),
+                    encoded(Question.serializeConfig(questions)),
                     encoded(privacyNotice),
                     Integer.toString(winningCount),
                     encoded(status),
@@ -1475,19 +1693,49 @@ public final class App {
                     }
                 }
             }
+            String satisfactionQuestion = decoded(part(parts, 2));
+            String topicQuestion = decoded(part(parts, 3));
+            String freeTextQuestion;
+            List<Question> questions;
+            String privacyNotice;
+            int winningCount;
+            String status;
+            String createdAt;
+            String updatedAt;
+            if (parts.length > 11) {
+                freeTextQuestion = decoded(part(parts, 5));
+                questions = Question.parseConfig(decoded(part(parts, 6)));
+                if (questions.isEmpty()) {
+                    questions = Question.defaultQuestions(satisfactionQuestion, topicQuestion, options, freeTextQuestion);
+                }
+                privacyNotice = decoded(part(parts, 7));
+                winningCount = Integer.parseInt(part(parts, 8, "1"));
+                status = decoded(part(parts, 9, "active"));
+                createdAt = decoded(part(parts, 10));
+                updatedAt = decoded(part(parts, 11));
+            } else {
+                freeTextQuestion = decoded(part(parts, 5));
+                questions = Question.defaultQuestions(satisfactionQuestion, topicQuestion, options, freeTextQuestion);
+                privacyNotice = decoded(part(parts, 6));
+                winningCount = Integer.parseInt(part(parts, 7, "1"));
+                status = decoded(part(parts, 8, "active"));
+                createdAt = decoded(part(parts, 9));
+                updatedAt = decoded(part(parts, 10));
+            }
 
             return new Event(
                     decoded(part(parts, 0)),
                     decoded(part(parts, 1)),
-                    decoded(part(parts, 2)),
-                    decoded(part(parts, 3)),
+                    satisfactionQuestion,
+                    topicQuestion,
                     options,
-                    decoded(part(parts, 5)),
-                    decoded(part(parts, 6)),
-                    Integer.parseInt(part(parts, 7, "1")),
-                    decoded(part(parts, 8, "active")),
-                    decoded(part(parts, 9)),
-                    decoded(part(parts, 10))
+                    freeTextQuestion,
+                    questions,
+                    privacyNotice,
+                    winningCount,
+                    status,
+                    createdAt,
+                    updatedAt
             );
         }
 
@@ -1520,6 +1768,7 @@ public final class App {
         final int satisfactionScore;
         final String topicAnswer;
         final String futureQuestion;
+        final Map<String, String> answers;
         final String createdAt;
 
         Submission(
@@ -1531,6 +1780,7 @@ public final class App {
                 int satisfactionScore,
                 String topicAnswer,
                 String futureQuestion,
+                Map<String, String> answers,
                 String createdAt
         ) {
             this.id = id;
@@ -1541,6 +1791,7 @@ public final class App {
             this.satisfactionScore = satisfactionScore;
             this.topicAnswer = topicAnswer;
             this.futureQuestion = futureQuestion;
+            this.answers = Map.copyOf(answers);
             this.createdAt = createdAt;
         }
 
@@ -1554,12 +1805,25 @@ public final class App {
                     Integer.toString(satisfactionScore),
                     encoded(topicAnswer),
                     encoded(futureQuestion),
+                    encoded(Question.serializeAnswers(answers)),
                     encoded(createdAt)
             );
         }
 
         static Submission fromLine(String line) {
             String[] parts = line.split("\t", -1);
+            Map<String, String> answers;
+            String createdAt;
+            if (parts.length > 9) {
+                answers = Question.parseAnswers(decoded(part(parts, 8)));
+                createdAt = decoded(part(parts, 9));
+            } else {
+                answers = new LinkedHashMap<>();
+                answers.put("score", part(parts, 5, "0"));
+                answers.put("topic", decoded(part(parts, 6)));
+                answers.put("future", decoded(part(parts, 7)));
+                createdAt = decoded(part(parts, 8));
+            }
             return new Submission(
                     decoded(part(parts, 0)),
                     decoded(part(parts, 1)),
@@ -1569,7 +1833,8 @@ public final class App {
                     Integer.parseInt(part(parts, 5, "0")),
                     decoded(part(parts, 6)),
                     decoded(part(parts, 7)),
-                    decoded(part(parts, 8))
+                    answers,
+                    createdAt
             );
         }
 

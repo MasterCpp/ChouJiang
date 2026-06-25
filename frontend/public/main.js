@@ -15,6 +15,8 @@ const resetFormButton = document.querySelector("#resetFormButton");
 const formTitle = document.querySelector("#formTitle");
 const topbar = document.querySelector(".topbar");
 const topbarActions = document.querySelector(".topbar-actions");
+const questionList = document.querySelector("#questionList");
+const addQuestionButton = document.querySelector("#addQuestionButton");
 
 const defaults = {
   title: "",
@@ -36,6 +38,8 @@ const defaults = {
   winningCount: "1",
   status: "active"
 };
+
+let currentQuestions = [];
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -66,7 +70,16 @@ async function api(path, options = {}) {
 }
 
 function encodeForm(form) {
-  return new URLSearchParams(new FormData(form)).toString();
+  const source = new FormData(form);
+  const target = new URLSearchParams();
+  const names = new Set();
+  for (const name of source.keys()) {
+    names.add(name);
+  }
+  names.forEach(name => {
+    target.set(name, source.getAll(name).join("\n"));
+  });
+  return target.toString();
 }
 
 function showOnly(view) {
@@ -100,6 +113,154 @@ function showLogin() {
   sessionLabel.textContent = "未登录";
 }
 
+function newQuestion(type = "text") {
+  return {
+    id: `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    type,
+    label: "",
+    required: true,
+    options: type === "single" || type === "multiple" ? [""] : []
+  };
+}
+
+function defaultQuestions() {
+  return [
+    {
+      id: "score",
+      type: "score",
+      label: defaults.satisfactionQuestion,
+      required: true,
+      options: []
+    },
+    {
+      id: "topic",
+      type: "single",
+      label: defaults.topicQuestion,
+      required: true,
+      options: defaults.topicOptions.split("\n").filter(Boolean)
+    },
+    {
+      id: "future",
+      type: "text",
+      label: defaults.freeTextQuestion,
+      required: true,
+      options: []
+    }
+  ];
+}
+
+function b64UrlEncode(value) {
+  const bytes = new TextEncoder().encode(String(value ?? ""));
+  let binary = "";
+  bytes.forEach(byte => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
+
+function serializeQuestions(questions) {
+  return questions.map(question => [
+    question.id,
+    question.type,
+    question.label,
+    String(question.required),
+    (question.options || []).join("\n")
+  ].map(b64UrlEncode).join("|")).join("\n");
+}
+
+function syncLegacyQuestionFields() {
+  const scoreQuestion = currentQuestions.find(question => question.type === "score") || currentQuestions[0] || {};
+  const singleQuestion = currentQuestions.find(question => question.type === "single") || currentQuestions[1] || {};
+  const textQuestion = currentQuestions.find(question => question.type === "text") || currentQuestions[currentQuestions.length - 1] || {};
+  eventForm.elements.satisfactionQuestion.value = scoreQuestion.label || "Score / 评分";
+  eventForm.elements.topicQuestion.value = singleQuestion.label || "Single choice / 单选题";
+  eventForm.elements.topicOptions.value = (singleQuestion.options || ["Option"]).join("\n");
+  eventForm.elements.freeTextQuestion.value = textQuestion.label || "Question / 问答题";
+  eventForm.elements.questionsConfig.value = serializeQuestions(currentQuestions);
+}
+
+function hideLegacyQuestionFields() {
+  ["satisfactionQuestion", "topicQuestion", "topicOptions", "freeTextQuestion"].forEach(name => {
+    const field = eventForm.elements[name];
+    if (field && field.closest("label")) {
+      field.closest("label").classList.add("hidden");
+    }
+  });
+}
+
+function renderQuestionBuilder() {
+  if (!questionList) {
+    return;
+  }
+  if (!currentQuestions.length) {
+    currentQuestions = defaultQuestions();
+  }
+  questionList.innerHTML = currentQuestions.map((question, index) => `
+    <article class="question-card" data-question-index="${index}">
+      <div class="question-card-head">
+        <strong>问题 ${index + 1} / Question ${index + 1}</strong>
+        <button type="button" class="danger-button" data-remove-question="${index}">删除 / Delete</button>
+      </div>
+      <div class="split">
+        <label>
+          类型 / Type
+          <select data-question-field="type">
+            <option value="single" ${question.type === "single" ? "selected" : ""}>单选 / Single choice</option>
+            <option value="multiple" ${question.type === "multiple" ? "selected" : ""}>多选 / Multiple choice</option>
+            <option value="text" ${question.type === "text" ? "selected" : ""}>问答 / Text</option>
+            <option value="score" ${question.type === "score" ? "selected" : ""}>评分 / Score 1-10</option>
+          </select>
+        </label>
+        <label class="checkbox-line">
+          <input type="checkbox" data-question-field="required" ${question.required ? "checked" : ""} />
+          必填 / Required
+        </label>
+      </div>
+      <label>
+        问题文案 / Question Text
+        <input data-question-field="label" value="${escapeHtml(question.label)}" required />
+      </label>
+      ${question.type === "single" || question.type === "multiple" ? `
+        <label>
+          选项 / Options
+          <textarea data-question-field="options" rows="4" required>${escapeHtml((question.options || []).join("\n"))}</textarea>
+        </label>
+      ` : ""}
+    </article>
+  `).join("");
+
+  questionList.querySelectorAll("[data-question-field]").forEach(input => {
+    input.addEventListener("input", updateQuestionFromControl);
+    input.addEventListener("change", updateQuestionFromControl);
+  });
+  questionList.querySelectorAll("[data-remove-question]").forEach(button => {
+    button.addEventListener("click", () => {
+      currentQuestions.splice(Number(button.dataset.removeQuestion), 1);
+      renderQuestionBuilder();
+    });
+  });
+  syncLegacyQuestionFields();
+}
+
+function updateQuestionFromControl(event) {
+  const card = event.currentTarget.closest("[data-question-index]");
+  const question = currentQuestions[Number(card.dataset.questionIndex)];
+  const field = event.currentTarget.dataset.questionField;
+  if (field === "required") {
+    question.required = event.currentTarget.checked;
+  } else if (field === "options") {
+    question.options = event.currentTarget.value.split(/\r?\n/).map(item => item.trim()).filter(Boolean);
+  } else {
+    question[field] = event.currentTarget.value;
+    if (field === "type") {
+      question.options = question.type === "single" || question.type === "multiple" ? (question.options && question.options.length ? question.options : [""]) : [];
+      renderQuestionBuilder();
+      return;
+    }
+  }
+  syncLegacyQuestionFields();
+}
+
 function fillDefaults() {
   eventForm.reset();
   eventForm.elements.id.value = "";
@@ -107,6 +268,9 @@ function fillDefaults() {
   for (const [key, value] of Object.entries(defaults)) {
     eventForm.elements[key].value = value;
   }
+  currentQuestions = defaultQuestions();
+  renderQuestionBuilder();
+  hideLegacyQuestionFields();
 }
 
 function fillEvent(event) {
@@ -120,6 +284,15 @@ function fillEvent(event) {
   eventForm.elements.privacyNotice.value = event.privacyNotice;
   eventForm.elements.winningCount.value = event.winningCount;
   eventForm.elements.status.value = event.status;
+  currentQuestions = event.questions && event.questions.length ? event.questions.map(question => ({
+    id: question.id,
+    type: question.type,
+    label: question.label,
+    required: question.required,
+    options: question.options || []
+  })) : defaultQuestions();
+  renderQuestionBuilder();
+  hideLegacyQuestionFields();
   eventMessage.textContent = "";
 }
 
@@ -208,9 +381,10 @@ function renderEvents(events) {
     button.addEventListener("click", async () => {
       const eventId = button.dataset.submissions;
       const box = document.querySelector(`#submissions-${eventId}`);
+      const event = await api(`/api/admin/events/${eventId}`);
       const submissions = await api(`/api/admin/events/${eventId}/submissions`);
       box.classList.toggle("hidden");
-      box.innerHTML = renderSubmissions(submissions);
+      box.innerHTML = renderSubmissions(submissions, event.questions || []);
     });
   });
 
@@ -342,6 +516,53 @@ function renderSubmissions(submissions) {
   `;
 }
 
+function renderSubmissions(submissions, questions = []) {
+  if (!submissions.length) {
+    return `<p class="empty">No registrations yet. / 暂无报名记录</p>`;
+  }
+  const visibleQuestions = questions.length ? questions : [
+    { id: "score", label: "Satisfaction Score" },
+    { id: "topic", label: "Single-choice Answer" },
+    { id: "future", label: "Future Discussion" }
+  ];
+
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Job Title</th>
+          <th>Email</th>
+          ${visibleQuestions.map(question => `<th>${escapeHtml(question.label)}</th>`).join("")}
+        </tr>
+      </thead>
+      <tbody>
+        ${submissions.map(item => `
+          <tr>
+            <td>${escapeHtml(item.name)}</td>
+            <td>${escapeHtml(item.jobTitle)}</td>
+            <td>${escapeHtml(item.email)}</td>
+            ${visibleQuestions.map(question => `<td>${escapeHtml((item.answers && item.answers[question.id]) || legacyAnswer(item, question.id))}</td>`).join("")}
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function legacyAnswer(item, questionId) {
+  if (questionId === "score") {
+    return item.satisfactionScore || "";
+  }
+  if (questionId === "topic") {
+    return item.topicAnswer || "";
+  }
+  if (questionId === "future") {
+    return item.futureQuestion || "";
+  }
+  return "";
+}
+
 function renderWinners(winners) {
   if (!winners.length) {
     return `<p class="empty">暂无中奖记录。</p>`;
@@ -464,6 +685,94 @@ function renderJoinForm(event) {
         `).join("")}
       </fieldset>
       <label>${escapeHtml(event.freeTextQuestion)} <textarea name="futureQuestion" rows="4" required></textarea></label>
+      <p class="privacy">${escapeHtml(event.privacyNotice)}</p>
+      <button type="submit">提交报名 / Submit</button>
+    </form>
+    <p id="joinMessage" class="message"></p>
+  `;
+
+  document.querySelector("#joinForm").addEventListener("submit", async submitEvent => {
+    submitEvent.preventDefault();
+    const message = document.querySelector("#joinMessage");
+    message.textContent = "";
+    try {
+      await api(`/api/events/${event.id}/submissions`, {
+        method: "POST",
+        body: encodeForm(submitEvent.currentTarget)
+      });
+      joinView.innerHTML = `
+        <h2>报名成功 / Registration submitted</h2>
+        <p>您已加入本场活动抽奖名单，请关注会议大屏或查看中奖结果页。</p>
+        <p>You are in the lucky draw pool. Please watch the meeting screen or check the winner page.</p>
+        <a class="button-link" href="/results/${event.id}">查看中奖结果 / View Winners</a>
+      `;
+    } catch (error) {
+      message.textContent = error.message;
+    }
+  });
+}
+
+function renderDynamicQuestionInput(question) {
+  const name = `answer_${question.id}`;
+  const required = question.required ? "required" : "";
+  if (question.type === "score") {
+    return `
+      <label>
+        ${escapeHtml(question.label)}
+        <select name="${escapeHtml(name)}" ${required}>
+          <option value="">请选择 / Select</option>
+          ${Array.from({ length: 10 }, (_, index) => `<option value="${index + 1}">${index + 1}</option>`).join("")}
+        </select>
+      </label>
+    `;
+  }
+  if (question.type === "single") {
+    return `
+      <fieldset>
+        <legend>${escapeHtml(question.label)}</legend>
+        ${(question.options || []).map(option => `
+          <label class="radio-line">
+            <input type="radio" name="${escapeHtml(name)}" value="${escapeHtml(option)}" ${required} />
+            <span>${escapeHtml(option)}</span>
+          </label>
+        `).join("")}
+      </fieldset>
+    `;
+  }
+  if (question.type === "multiple") {
+    return `
+      <fieldset>
+        <legend>${escapeHtml(question.label)}</legend>
+        ${(question.options || []).map(option => `
+          <label class="radio-line">
+            <input type="checkbox" name="${escapeHtml(name)}" value="${escapeHtml(option)}" />
+            <span>${escapeHtml(option)}</span>
+          </label>
+        `).join("")}
+      </fieldset>
+    `;
+  }
+  return `<label>${escapeHtml(question.label)} <textarea name="${escapeHtml(name)}" rows="4" ${required}></textarea></label>`;
+}
+
+function renderJoinForm(event) {
+  showPublic(joinView);
+  sessionLabel.textContent = "Registration";
+  logoutButton.classList.add("hidden");
+
+  if (event.status !== "active") {
+    renderJoinUnavailable("This event is not open for registration. / 本场活动暂未开放报名。");
+    return;
+  }
+
+  const questions = event.questions && event.questions.length ? event.questions : defaultQuestions();
+  joinView.innerHTML = `
+    <h2>${escapeHtml(event.title)}</h2>
+    <form id="joinForm" class="form-grid">
+      <label>姓名 / Name <input name="name" required /></label>
+      <label>职位 / Job Title <input name="jobTitle" required /></label>
+      <label>邮箱 / Email <input name="email" type="email" required /></label>
+      ${questions.map(renderDynamicQuestionInput).join("")}
       <p class="privacy">${escapeHtml(event.privacyNotice)}</p>
       <button type="submit">提交报名 / Submit</button>
     </form>
@@ -678,6 +987,7 @@ logoutButton.addEventListener("click", async () => {
 eventForm.addEventListener("submit", async event => {
   event.preventDefault();
   eventMessage.textContent = "";
+  syncLegacyQuestionFields();
 
   const id = eventForm.elements.id.value;
   const path = id ? `/api/admin/events/${id}` : "/api/admin/events";
@@ -698,6 +1008,10 @@ eventForm.addEventListener("submit", async event => {
 
 newEventButton.addEventListener("click", fillDefaults);
 resetFormButton.addEventListener("click", fillDefaults);
+addQuestionButton.addEventListener("click", () => {
+  currentQuestions.push(newQuestion("text"));
+  renderQuestionBuilder();
+});
 
 async function bootAdmin() {
   try {

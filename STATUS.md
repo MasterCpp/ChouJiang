@@ -2,7 +2,7 @@
 
 ## Current State
 
-Planning and local workflow setup are complete. The first runnable application scaffold now exists.
+Initial implementation is complete. The project now has a runnable local/demo application, customer-feedback UI changes, and dynamic per-event registration form configuration.
 
 ## Completed
 
@@ -53,27 +53,29 @@ Planning and local workflow setup are complete. The first runnable application s
 - Added admin event deletion from the event list, including related submissions, winners, and operation records.
 - Changed the big-screen presenter flow to two steps: start participant rolling first, then reveal winners with a second button press.
 - Added admin winner-record deletion from the winner list, with a `delete_winner` operation record.
+- Added dynamic per-event registration form configuration with single-choice, multiple-choice, text-answer, and 1-10 score questions.
+- Updated public registration, admin submission display, submission validation, and CSV export to use dynamic event questions.
 
 ## Current Issue
 
 Latest completed implementation issue:
 
 ```text
-.scratch/issues/006-demo-and-deployment.md
+.scratch/issues/007-dynamic-registration-form.md
 ```
 
 Next implementation issue:
 
 ```text
-All initial issues are done. Next step is manual product QA and customer demo preparation.
+Dynamic form configuration is implemented. Next step is manual product QA and customer demo preparation.
 ```
 
 ## Next Steps
 
-1. Verify the scaffold commands.
-2. Start implementation issue `002-event-admin.md`.
-3. Add admin login and event management.
-4. Update this file with test results after each implementation step.
+1. Manually QA the dynamic form builder in the browser.
+2. Prepare a customer demo activity using the customer's final bilingual copy.
+3. Confirm whether formal delivery uses a public IP only or a domain plus HTTPS.
+4. Update deployment data backup and admin password before formal delivery.
 
 ## Open Questions
 
@@ -159,6 +161,14 @@ All initial issues are done. Next step is manual product QA and customer demo pr
   - `scripts\build.cmd` completed successfully.
   - Temporary server smoke test created an event, submitted one participant, drew one winner, deleted the winner record, and confirmed the winner list returned `[]`.
   - Operation records contained `delete_winner`.
+- Dynamic registration form verified:
+  - `node --check frontend\public\main.js` completed successfully.
+  - `scripts\build.cmd` completed successfully.
+  - Temporary server smoke test created an event with single-choice, multiple-choice, text, and score questions.
+  - Public submission accepted dynamic answers, including multiple-choice answers.
+  - Admin submission API returned the dynamic answer map.
+  - CSV export included dynamic question headers.
+  - Draw still selected a winner from the dynamically submitted participant.
 
 ## Local Commands
 

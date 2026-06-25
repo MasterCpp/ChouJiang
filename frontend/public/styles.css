@@ -273,6 +273,53 @@ button:hover,
   gap: 8px;
 }
 
+.question-builder {
+  display: grid;
+  gap: 12px;
+}
+
+.builder-head,
+.question-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.builder-head h3 {
+  margin: 0 0 4px;
+}
+
+.builder-head p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.question-list {
+  display: grid;
+  gap: 12px;
+}
+
+.question-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  display: grid;
+  gap: 12px;
+  background: #f8fafc;
+}
+
+.checkbox-line {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.checkbox-line input {
+  width: auto;
+}
+
 .message {
   white-space: pre-line;
   margin: 12px 0 0;

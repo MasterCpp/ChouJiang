@@ -11,7 +11,9 @@ J_Sys is a multi-event lucky draw system for small online or hybrid meetings. Ea
 - Participants may join different events with the same email.
 - Email dedupe is scoped to one event only.
 - No pre-imported participant list in the first version.
-- Registration fields are required.
+- Base registration fields are required.
+- Each event can configure its own additional registration questions.
+- Dynamic registration questions support single choice, multiple choice, text answer, and 1-10 score.
 - Chinese and English content appear together on the same page; no language switch is required.
 - Customer will provide or approve final bilingual copy.
 - The event creator sets the winning count before the draw.
@@ -28,22 +30,32 @@ J_Sys is a multi-event lucky draw system for small online or hybrid meetings. Ea
 
 ## Registration Form
 
-The current event form should support these fields:
+The base registration form always includes these fields:
 
 - Name
 - Job title
 - Email
+
+Each event can then configure its own registration questions. The default template includes:
+
 - Overall satisfaction with today's topic sharing, scored 1 to 10
 - Most satisfying sharing topic, single choice
 - Expected topic for future deeper discussion, free text
 
+Supported dynamic question types:
+
+- Single choice
+- Multiple choice
+- Text answer
+- Score from 1 to 10
+
 The editable event copy includes:
 
 - Event title
-- Satisfaction question text
-- Single-choice question text
-- Single-choice options
-- Free-text question text
+- Dynamic question text
+- Question type
+- Required or optional setting
+- Choice options for single-choice and multiple-choice questions
 - Privacy notice copy if needed
 
 ## Deployment Understanding

@@ -542,12 +542,23 @@ function renderSubmissions(submissions, questions = []) {
             <td>${escapeHtml(item.name)}</td>
             <td>${escapeHtml(item.jobTitle)}</td>
             <td>${escapeHtml(item.email)}</td>
-            ${visibleQuestions.map(question => `<td>${escapeHtml((item.answers && item.answers[question.id]) || legacyAnswer(item, question.id))}</td>`).join("")}
+            ${visibleQuestions.map(question => `<td>${renderAnswerCell((item.answers && item.answers[question.id]) || legacyAnswer(item, question.id), question)}</td>`).join("")}
           </tr>
         `).join("")}
       </tbody>
     </table>
   `;
+}
+
+function renderAnswerCell(answer, question) {
+  if (question.type === "multiple") {
+    const values = String(answer || "").split(/\r?\n/).map(item => item.trim()).filter(Boolean);
+    if (!values.length) {
+      return "";
+    }
+    return `<ul class="answer-list">${values.map(value => `<li>${escapeHtml(value)}</li>`).join("")}</ul>`;
+  }
+  return escapeHtml(answer || "");
 }
 
 function legacyAnswer(item, questionId) {

@@ -169,6 +169,9 @@ Dynamic form configuration is implemented. Next step is manual product QA and cu
   - Admin submission API returned the dynamic answer map.
   - CSV export included dynamic question headers.
   - Draw still selected a winner from the dynamically submitted participant.
+- Multiple-choice answer display polished:
+  - Admin submission table now shows each selected multiple-choice answer on its own line.
+  - CSV export continues to keep multiple-choice answers line-separated inside the answer cell.
 
 ## Local Commands
 

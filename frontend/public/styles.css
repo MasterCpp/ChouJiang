@@ -515,6 +515,17 @@ td {
   color: var(--ink);
 }
 
+.answer-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+
+.answer-list li {
+  line-height: 1.45;
+}
+
 .winner-list {
   display: grid;
   gap: 10px;

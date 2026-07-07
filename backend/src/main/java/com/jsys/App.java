@@ -221,6 +221,19 @@ public final class App {
             handleRedraw(exchange, eventStore, submissionStore, winnerStore, operationStore, parts[0], parts[2]);
             return;
         }
+        if (id.contains("/winners/") && id.endsWith("/replace")) {
+            String[] parts = id.split("/");
+            if (parts.length != 4 || !"winners".equals(parts[1]) || !"replace".equals(parts[3])) {
+                send(exchange, 404, "application/json", "{\"error\":\"Not found\"}");
+                return;
+            }
+            if (!"POST".equals(method)) {
+                send(exchange, 405, "application/json", "{\"error\":\"Method not allowed\"}");
+                return;
+            }
+            handleReplaceWinner(exchange, eventStore, submissionStore, winnerStore, operationStore, parts[0], parts[2]);
+            return;
+        }
         if (id.contains("/winners/")) {
             String[] parts = id.split("/");
             if (parts.length != 3 || !"winners".equals(parts[1])) {
@@ -383,20 +396,22 @@ public final class App {
             return;
         }
 
+        int validWinnerCount = winnerStore.validByEvent(eventId).size();
+        if (validWinnerCount >= event.get().winningCount) {
+            send(exchange, 409, "application/json", "{\"error\":\"Winner quota is already full.\"}");
+            return;
+        }
+
         List<Submission> eligible = eligibleSubmissions(eventId, submissionStore, winnerStore, "");
-        if (eligible.size() < event.get().winningCount) {
-            send(exchange, 409, "application/json", "{\"error\":\"Not enough eligible participants.\"}");
+        if (eligible.isEmpty()) {
+            send(exchange, 409, "application/json", "{\"error\":\"No eligible participant left. All registered participants have already won or were used.\"}");
             return;
         }
 
         Collections.shuffle(eligible);
-        List<Winner> created = new ArrayList<>();
-        for (int i = 0; i < event.get().winningCount; i++) {
-            Winner winner = winnerStore.create(eventId, eligible.get(i), "draw", "");
-            operationStore.create(eventId, "draw", winner.id, "admin");
-            created.add(winner);
-        }
-        send(exchange, 201, "application/json", winnersJson(created));
+        Winner winner = winnerStore.create(eventId, eligible.get(0), "draw", "");
+        operationStore.create(eventId, "draw", winner.id, "admin");
+        send(exchange, 201, "application/json", winnersJson(List.of(winner)));
     }
 
     private static void handleVoidWinner(
@@ -446,12 +461,49 @@ public final class App {
 
         List<Submission> eligible = eligibleSubmissions(eventId, submissionStore, winnerStore, voided.get().submissionId);
         if (eligible.isEmpty()) {
-            send(exchange, 409, "application/json", "{\"error\":\"No eligible participant for redraw.\"}");
+            send(exchange, 409, "application/json", "{\"error\":\"No eligible participant for redraw. All registered participants have already won or there are not enough registrations.\"}");
             return;
         }
 
         Collections.shuffle(eligible);
         Winner replacement = winnerStore.create(eventId, eligible.get(0), "redraw", voidedWinnerId);
+        operationStore.create(eventId, "redraw", replacement.id, "admin");
+        send(exchange, 201, "application/json", winnerJson(replacement));
+    }
+
+    private static void handleReplaceWinner(
+            HttpExchange exchange,
+            EventStore eventStore,
+            SubmissionStore submissionStore,
+            WinnerStore winnerStore,
+            OperationStore operationStore,
+            String eventId,
+            String winnerId
+    ) throws IOException {
+        if (eventStore.find(eventId).isEmpty()) {
+            send(exchange, 404, "application/json", "{\"error\":\"Event not found\"}");
+            return;
+        }
+        Optional<Winner> current = winnerStore.find(eventId, winnerId);
+        if (current.isEmpty()) {
+            send(exchange, 404, "application/json", "{\"error\":\"Winner not found\"}");
+            return;
+        }
+        if (!"valid".equals(current.get().status)) {
+            send(exchange, 409, "application/json", "{\"error\":\"Only current valid winners can be replaced.\"}");
+            return;
+        }
+
+        List<Submission> eligible = eligibleSubmissions(eventId, submissionStore, winnerStore, current.get().submissionId);
+        if (eligible.isEmpty()) {
+            send(exchange, 409, "application/json", "{\"error\":\"No replacement available. There are not enough remaining eligible participants.\"}");
+            return;
+        }
+
+        Collections.shuffle(eligible);
+        Winner voided = winnerStore.voidWinner(current.get());
+        operationStore.create(eventId, "void", voided.id, "admin");
+        Winner replacement = winnerStore.create(eventId, eligible.get(0), "redraw", winnerId);
         operationStore.create(eventId, "redraw", replacement.id, "admin");
         send(exchange, 201, "application/json", winnerJson(replacement));
     }

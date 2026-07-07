@@ -55,19 +55,20 @@ Initial implementation is complete. The project now has a runnable local/demo ap
 - Added admin winner-record deletion from the winner list, with a `delete_winner` operation record.
 - Added dynamic per-event registration form configuration with single-choice, multiple-choice, text-answer, and 1-10 score questions.
 - Updated public registration, admin submission display, submission validation, and CSV export to use dynamic event questions.
+- Changed draw flow so the configured winner count is the final quota, while each draw action selects one winner.
 
 ## Current Issue
 
 Latest completed implementation issue:
 
 ```text
-.scratch/issues/007-dynamic-registration-form.md
+.scratch/issues/008-one-at-a-time-draw-flow.md
 ```
 
 Next implementation issue:
 
 ```text
-Dynamic form configuration is implemented. Next step is manual product QA and customer demo preparation.
+One-at-a-time draw flow is implemented. Next step is manual product QA and customer demo preparation.
 ```
 
 ## Next Steps
@@ -110,9 +111,10 @@ Dynamic form configuration is implemented. Next step is manual product QA and cu
   - admin submission list returned the saved participant and questionnaire answers.
   - public result API returned `waiting`.
 - Draw APIs verified on a temporary PowerShell job server:
-  - draw with too few eligible participants returned 409.
-  - event with 4 participants and winning count 3 created exactly 3 winners.
-  - repeat draw for the same event returned 409 because only 1 eligible participant remained.
+  - draw with no eligible participants returned 409.
+  - each draw action creates exactly 1 winner.
+  - repeated draws fill the configured winner quota one winner at a time.
+  - drawing after the valid winner count reaches the configured quota returns 409.
   - winner state in event A did not block drawing the same email in event B.
   - void changed a winner status to `voided`.
   - replacement redraw selected a different submission from the just-voided winner.
@@ -172,6 +174,18 @@ Dynamic form configuration is implemented. Next step is manual product QA and cu
 - Multiple-choice answer display polished:
   - Admin submission table now shows each selected multiple-choice answer on its own line.
   - CSV export continues to keep multiple-choice answers line-separated inside the answer cell.
+- One-at-a-time draw flow verified:
+  - `node --check frontend\public\main.js` completed successfully.
+  - `scripts\build.cmd` completed successfully.
+  - Draw action now creates one winner per click.
+  - Draw action returns a quota-full error after valid winners reach the configured winner count.
+  - Redraw error copy now explains when there are not enough remaining eligible participants.
+  - Big-screen page shows current winner progress and can continue drawing until the quota is full.
+  - Big-screen page uses `下一位中奖者 / Next Winner` for continuing onsite draws.
+  - Big-screen page uses `换一位 / Pick Another` to replace the latest winner while backend records keep `void` and `redraw` audit actions.
+  - Replacement smoke test confirmed `换一位 / Pick Another` creates one replacement when an eligible participant remains.
+  - Replacement smoke test confirmed no-replacement errors do not void the current winner first.
+  - No-replacement feedback now shows a Chinese-friendly alert: `没有可替换候选人了，请保留当前中奖者或增加报名候选人。`
 
 ## Local Commands
 

@@ -16,9 +16,10 @@ J_Sys is a multi-event lucky draw system for small online or hybrid meetings. Ea
 - Dynamic registration questions support single choice, multiple choice, text answer, and 1-10 score.
 - Chinese and English content appear together on the same page; no language switch is required.
 - Customer will provide or approve final bilingual copy.
-- The event creator sets the winning count before the draw.
+- The event creator sets the final winner count before the draw.
 - One prize category in the first version.
 - Winners cannot join later draws for the same event.
+- Each draw action selects one winner; hosts repeat the draw until the valid winner count reaches the configured winner count.
 - Re-draw and void winner actions are required and must leave operation records.
 - First version uses a simple rolling big-screen animation.
 - Both QR code and copyable registration link are required.

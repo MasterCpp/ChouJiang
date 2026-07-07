@@ -595,11 +595,34 @@ td {
   opacity: 0.72;
 }
 
+.screen-secondary-button {
+  min-height: 48px;
+  padding: 0 22px;
+  border-radius: 12px;
+  color: var(--primary-dark);
+  background: #ecfdf5;
+  border: 1px solid #99f6e4;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.screen-secondary-button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
 .screen-note {
   margin: 0;
   color: var(--muted);
   font-size: 18px;
   line-height: 1.6;
+}
+
+.screen-progress {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 18px;
+  font-weight: 700;
 }
 
 .rolling-name {

@@ -31,7 +31,8 @@ Read first:
 - Chinese and English copy shown together.
 - One admin login.
 - One prize category.
-- Winning count configured on the event.
+- Winning count configured on the event as the final quota.
+- Each draw action selects one winner; repeat the draw until the quota is full.
 - Void and redraw with operation records.
 - Simple rolling big-screen animation.
 - QR code and copyable registration link.
@@ -106,7 +107,7 @@ There is no automated test suite yet. For the scaffold baseline, verify:
 - Duplicate email in the same event is rejected.
 - The same email can register for another event.
 - Public result link shows a waiting state before winners are drawn.
-- Admin can draw winners, void a winner, redraw a replacement, and view operation records.
+- Admin can draw winners one at a time, void a winner, redraw a replacement, and view operation records.
 - Public result link shows valid winners after the draw.
 - Big-screen link shows waiting state before draw and winner display after draw.
 - Event export downloads an Excel-compatible CSV and records an export operation.
@@ -138,7 +139,7 @@ Runtime data is ignored by git.
 The latest implementation task is tracked in:
 
 ```text
-.scratch/issues/007-dynamic-registration-form.md
+.scratch/issues/008-one-at-a-time-draw-flow.md
 ```
 
 ## Deployment Plan

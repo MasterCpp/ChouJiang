@@ -838,23 +838,35 @@ async function renderResultPage(eventId) {
   }
 }
 
-function renderScreenCompleted(event, result) {
+function renderScreenCompleted(event, result, adminSession) {
+  const winnerCount = result.winners.length;
+  const canDrawMore = Boolean(adminSession) && winnerCount < event.winningCount;
+  const canPickAnother = Boolean(adminSession) && winnerCount > 0;
   screenView.innerHTML = `
     <div class="screen-stage">
       <p class="eyebrow">Lucky Draw</p>
       <h2>${escapeHtml(event.title)}</h2>
       <div id="rollingName" class="rolling-name">Ready</div>
+      <p class="screen-progress">已抽 ${winnerCount} / ${event.winningCount} · Winners ${winnerCount} / ${event.winningCount}</p>
       <div id="screenCongrats" class="screen-congrats hidden">恭喜中奖 / Congratulations</div>
       <ul id="screenWinners" class="screen-winners hidden">
         ${result.winners.map(winner => `<li>${escapeHtml(winner.name)}<span>${escapeHtml(winner.email)}</span></li>`).join("")}
       </ul>
+      ${canDrawMore || canPickAnother ? `
+        <div class="screen-actions hidden" id="screenNextActions">
+          ${canDrawMore ? `<button id="screenDrawButton" type="button" class="screen-draw-button">下一位中奖者 / Next Winner</button>` : ""}
+          ${canPickAnother ? `<button id="screenPickAnotherButton" type="button" class="screen-secondary-button">换一位 / Pick Another</button>` : ""}
+          <p id="screenDrawMessage" class="screen-note"></p>
+        </div>
+      ` : ""}
     </div>
   `;
 
   const rollingName = document.querySelector("#rollingName");
   const screenCongrats = document.querySelector("#screenCongrats");
   const screenWinners = document.querySelector("#screenWinners");
-  const names = result.winners.map(winner => winner.name);
+  const screenNextActions = document.querySelector("#screenNextActions");
+  const names = result.winners.length ? result.winners.map(winner => winner.name) : ["Ready"];
   let tick = 0;
   const timer = setInterval(() => {
     rollingName.textContent = names[tick % names.length];
@@ -865,6 +877,11 @@ function renderScreenCompleted(event, result) {
     rollingName.classList.add("hidden");
     screenCongrats.classList.remove("hidden");
     screenWinners.classList.remove("hidden");
+    if (screenNextActions) {
+      screenNextActions.classList.remove("hidden");
+      bindScreenDrawButton(event);
+      bindScreenPickAnotherButton(event, result);
+    }
   }, 1500);
 }
 
@@ -889,6 +906,102 @@ function renderScreenRolling(event, names) {
     tick += 1;
   }, 90);
   return () => clearInterval(timer);
+}
+
+function bindScreenDrawButton(event) {
+  const drawButton = document.querySelector("#screenDrawButton");
+  if (!drawButton) {
+    return;
+  }
+  drawButton.addEventListener("click", async () => {
+    const message = document.querySelector("#screenDrawMessage");
+    drawButton.disabled = true;
+    drawButton.textContent = "抽奖中... / Drawing...";
+    if (message) {
+      message.textContent = "";
+    }
+    let stopRolling = null;
+    try {
+      const [submissions, currentResult] = await Promise.all([
+        api(`/api/admin/events/${event.id}/submissions`),
+        api(`/api/events/${event.id}/results`)
+      ]);
+      const validWinnerSubmissionIds = new Set(currentResult.winners.map(winner => winner.submissionId));
+      const names = submissions
+        .filter(submission => !validWinnerSubmissionIds.has(submission.id))
+        .map(submission => submission.name || submission.email || "Participant");
+      stopRolling = renderScreenRolling(event, names);
+      const revealButton = document.querySelector("#screenRevealButton");
+      if (revealButton) {
+        revealButton.addEventListener("click", async () => {
+          revealButton.disabled = true;
+          revealButton.textContent = "开奖中... / Revealing...";
+          try {
+            await api(`/api/admin/events/${event.id}/draw`, { method: "POST", body: "" });
+            const latest = await api(`/api/events/${event.id}/results`);
+            stopRolling();
+            renderScreenCompleted(event, latest, true);
+          } catch (error) {
+            stopRolling();
+            await renderScreenPage(event.id);
+            const nextMessage = document.querySelector("#screenDrawMessage");
+            if (nextMessage) {
+              nextMessage.textContent = error.message;
+            } else {
+              alert(error.message);
+            }
+          }
+        });
+      }
+    } catch (error) {
+      if (stopRolling) {
+        stopRolling();
+      }
+      await renderScreenPage(event.id);
+      const nextMessage = document.querySelector("#screenDrawMessage");
+      if (nextMessage) {
+        nextMessage.textContent = error.message;
+      } else {
+        alert(error.message);
+      }
+    }
+  });
+}
+
+function bindScreenPickAnotherButton(event, result) {
+  const pickAnotherButton = document.querySelector("#screenPickAnotherButton");
+  if (!pickAnotherButton || !result.winners.length) {
+    return;
+  }
+  const currentWinner = result.winners[result.winners.length - 1];
+  pickAnotherButton.addEventListener("click", async () => {
+    const message = document.querySelector("#screenDrawMessage");
+    pickAnotherButton.disabled = true;
+    pickAnotherButton.textContent = "重新抽取中... / Picking...";
+    if (message) {
+      message.textContent = "";
+    }
+    try {
+      await api(`/api/admin/events/${event.id}/winners/${currentWinner.id}/replace`, { method: "POST", body: "" });
+      const latest = await api(`/api/events/${event.id}/results`);
+      renderScreenCompleted(event, latest, true);
+    } catch (error) {
+      pickAnotherButton.disabled = false;
+      pickAnotherButton.textContent = "换一位 / Pick Another";
+      const friendlyMessage = friendlyPickAnotherError(error);
+      if (message) {
+        message.textContent = friendlyMessage;
+      }
+      alert(friendlyMessage);
+    }
+  });
+}
+
+function friendlyPickAnotherError(error) {
+  if (String(error.message || "").includes("No replacement available")) {
+    return "没有可替换候选人了，请保留当前中奖者或增加报名候选人。/ No replacement available.";
+  }
+  return error.message;
 }
 
 async function renderScreenPage(eventId) {
@@ -937,7 +1050,7 @@ async function renderScreenPage(eventId) {
                   await api(`/api/admin/events/${eventId}/draw`, { method: "POST", body: "" });
                   const latest = await api(`/api/events/${eventId}/results`);
                   stopRolling();
-                  renderScreenCompleted(event, latest);
+                  renderScreenCompleted(event, latest, true);
                 } catch (error) {
                   stopRolling();
                   await renderScreenPage(eventId);
@@ -967,7 +1080,7 @@ async function renderScreenPage(eventId) {
       return;
     }
 
-    renderScreenCompleted(event, result);
+    renderScreenCompleted(event, result, adminSession);
   } catch (error) {
     screenView.innerHTML = `<div class="screen-stage"><h2>大屏不可用 / Screen unavailable</h2><p class="message">${escapeHtml(error.message)}</p></div>`;
   }

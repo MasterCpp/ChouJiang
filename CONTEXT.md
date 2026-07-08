@@ -21,6 +21,8 @@ J_Sys is a multi-event lucky draw system for small online or hybrid meetings. Ea
 - Winners cannot join later draws for the same event.
 - Each draw action selects one winner; hosts repeat the draw until the valid winner count reaches the configured winner count.
 - Re-draw and void winner actions are required and must leave operation records.
+- Admins can delete an individual registration; related winner records are cleaned up to avoid orphaned draw data.
+- Admins can copy an existing event's settings into a new clean event without copying registrations, winners, or operation history.
 - First version uses a simple rolling big-screen animation.
 - Both QR code and copyable registration link are required.
 - After registration, participants can open a public "View Winners" result page for the event.

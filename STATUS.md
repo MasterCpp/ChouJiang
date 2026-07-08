@@ -56,19 +56,21 @@ Initial implementation is complete. The project now has a runnable local/demo ap
 - Added dynamic per-event registration form configuration with single-choice, multiple-choice, text-answer, and 1-10 score questions.
 - Updated public registration, admin submission display, submission validation, and CSV export to use dynamic event questions.
 - Changed draw flow so the configured winner count is the final quota, while each draw action selects one winner.
+- Added admin deletion for individual registrations, including cleanup of related winner records.
+- Added event copy so a new activity can reuse an existing event's settings and dynamic questions without copying submissions or winners.
 
 ## Current Issue
 
 Latest completed implementation issue:
 
 ```text
-.scratch/issues/008-one-at-a-time-draw-flow.md
+.scratch/issues/009-admin-submission-delete-and-event-copy.md
 ```
 
 Next implementation issue:
 
 ```text
-One-at-a-time draw flow is implemented. Next step is manual product QA and customer demo preparation.
+Submission deletion and event copy are implemented. Next step is manual product QA and customer demo preparation.
 ```
 
 ## Next Steps
@@ -186,6 +188,13 @@ One-at-a-time draw flow is implemented. Next step is manual product QA and custo
   - Replacement smoke test confirmed `换一位 / Pick Another` creates one replacement when an eligible participant remains.
   - Replacement smoke test confirmed no-replacement errors do not void the current winner first.
   - No-replacement feedback now shows a Chinese-friendly alert: `没有可替换候选人了，请保留当前中奖者或增加报名候选人。`
+
+- Admin submission deletion and event copy verified:
+  - `node --check frontend\public\main.js` completed successfully.
+  - `scripts\build.cmd` completed successfully.
+  - Temporary server smoke test copied an event and confirmed the copied event had the same question configuration and zero submissions.
+  - Temporary server smoke test deleted a registration tied to a winner and confirmed the related winner record was removed.
+  - Operation records contained `delete_submission`.
 
 ## Local Commands
 

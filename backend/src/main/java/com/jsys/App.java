@@ -147,6 +147,22 @@ public final class App {
             handleDraw(exchange, eventStore, submissionStore, winnerStore, operationStore, eventId);
             return;
         }
+        if (id.endsWith("/copy")) {
+            String eventId = id.substring(0, id.length() - "/copy".length());
+            if (!"POST".equals(method)) {
+                send(exchange, 405, "application/json", "{\"error\":\"Method not allowed\"}");
+                return;
+            }
+            Optional<Event> existing = eventStore.find(eventId);
+            if (existing.isEmpty()) {
+                send(exchange, 404, "application/json", "{\"error\":\"Event not found\"}");
+                return;
+            }
+            Event copied = eventStore.copy(existing.get());
+            operationStore.create(copied.id, "copy_event", eventId, "admin");
+            send(exchange, 201, "application/json", eventJson(copied));
+            return;
+        }
         if (id.endsWith("/submissions")) {
             String eventId = id.substring(0, id.length() - "/submissions".length());
             if (!"GET".equals(method)) {
@@ -158,6 +174,19 @@ public final class App {
                 return;
             }
             send(exchange, 200, "application/json", submissionsJson(submissionStore.listByEvent(eventId)));
+            return;
+        }
+        if (id.contains("/submissions/")) {
+            String[] parts = id.split("/");
+            if (parts.length != 3 || !"submissions".equals(parts[1])) {
+                send(exchange, 404, "application/json", "{\"error\":\"Not found\"}");
+                return;
+            }
+            if (!"DELETE".equals(method)) {
+                send(exchange, 405, "application/json", "{\"error\":\"Method not allowed\"}");
+                return;
+            }
+            handleDeleteSubmission(exchange, eventStore, submissionStore, winnerStore, operationStore, parts[0], parts[2]);
             return;
         }
         if (id.endsWith("/winners")) {
@@ -527,6 +556,30 @@ public final class App {
         }
         winnerStore.delete(eventId, winnerId);
         operationStore.create(eventId, "delete_winner", winnerId, "admin");
+        send(exchange, 200, "application/json", "{\"ok\":true}");
+    }
+
+    private static void handleDeleteSubmission(
+            HttpExchange exchange,
+            EventStore eventStore,
+            SubmissionStore submissionStore,
+            WinnerStore winnerStore,
+            OperationStore operationStore,
+            String eventId,
+            String submissionId
+    ) throws IOException {
+        if (eventStore.find(eventId).isEmpty()) {
+            send(exchange, 404, "application/json", "{\"error\":\"Event not found\"}");
+            return;
+        }
+        Optional<Submission> submission = submissionStore.find(eventId, submissionId);
+        if (submission.isEmpty()) {
+            send(exchange, 404, "application/json", "{\"error\":\"Submission not found\"}");
+            return;
+        }
+        submissionStore.delete(eventId, submissionId);
+        winnerStore.deleteBySubmission(eventId, submissionId);
+        operationStore.create(eventId, "delete_submission", submissionId, "admin");
         send(exchange, 200, "application/json", "{\"ok\":true}");
     }
 
@@ -1023,6 +1076,28 @@ public final class App {
             return event;
         }
 
+        synchronized Event copy(Event existing) throws IOException {
+            String now = Instant.now().toString();
+            Event event = new Event(
+                    UUID.randomUUID().toString(),
+                    existing.title + " - Copy",
+                    existing.satisfactionQuestion,
+                    existing.topicQuestion,
+                    existing.topicOptions,
+                    existing.freeTextQuestion,
+                    existing.questions,
+                    existing.privacyNotice,
+                    existing.winningCount,
+                    existing.status,
+                    now,
+                    now
+            );
+            List<Event> events = list();
+            events.add(event);
+            write(events);
+            return event;
+        }
+
         synchronized Event update(Event existing, EventInput input) throws IOException {
             Event updated = new Event(
                     existing.id,
@@ -1100,6 +1175,10 @@ public final class App {
             return matches;
         }
 
+        synchronized Optional<Submission> find(String eventId, String submissionId) throws IOException {
+            return listByEvent(eventId).stream().filter(submission -> submission.id.equals(submissionId)).findFirst();
+        }
+
         synchronized boolean existsEmail(String eventId, String email) throws IOException {
             String normalized = normalizeEmail(email);
             for (Submission submission : listByEvent(eventId)) {
@@ -1133,6 +1212,16 @@ public final class App {
             List<Submission> remaining = new ArrayList<>();
             for (Submission submission : list()) {
                 if (!submission.eventId.equals(eventId)) {
+                    remaining.add(submission);
+                }
+            }
+            write(remaining);
+        }
+
+        synchronized void delete(String eventId, String submissionId) throws IOException {
+            List<Submission> remaining = new ArrayList<>();
+            for (Submission submission : list()) {
+                if (!(submission.eventId.equals(eventId) && submission.id.equals(submissionId))) {
                     remaining.add(submission);
                 }
             }
@@ -1248,6 +1337,16 @@ public final class App {
             List<Winner> remaining = new ArrayList<>();
             for (Winner winner : list()) {
                 if (!(winner.eventId.equals(eventId) && winner.id.equals(winnerId))) {
+                    remaining.add(winner);
+                }
+            }
+            write(remaining);
+        }
+
+        synchronized void deleteBySubmission(String eventId, String submissionId) throws IOException {
+            List<Winner> remaining = new ArrayList<>();
+            for (Winner winner : list()) {
+                if (!(winner.eventId.equals(eventId) && winner.submissionId.equals(submissionId))) {
                     remaining.add(winner);
                 }
             }

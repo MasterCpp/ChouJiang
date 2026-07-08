@@ -343,6 +343,7 @@ function renderEvents(events) {
           </div>
         </div>
         <div class="form-actions">
+          <button type="button" data-copy-event="${event.id}" data-title="${escapeHtml(event.title || "Untitled Event")}" class="secondary">复制活动 / Copy</button>
           <button type="button" data-edit="${event.id}" class="secondary">✏️ 编辑</button>
           <button type="button" data-submissions="${event.id}" class="secondary">👥 查看报名</button>
           <button type="button" data-draw="${event.id}">🎲 开始抽奖</button>
@@ -377,6 +378,24 @@ function renderEvents(events) {
     });
   });
 
+  eventList.querySelectorAll("[data-copy-event]").forEach(button => {
+    button.addEventListener("click", async () => {
+      const confirmed = window.confirm(`复制活动「${button.dataset.title}」吗？\nOnly event settings will be copied. Registrations and winners will not be copied.`);
+      if (!confirmed) {
+        return;
+      }
+      try {
+        const copied = await api(`/api/admin/events/${button.dataset.copyEvent}/copy`, { method: "POST", body: "" });
+        await loadEvents();
+        const event = await api(`/api/admin/events/${copied.id}`);
+        fillEvent(event);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+  });
+
   eventList.querySelectorAll("[data-submissions]").forEach(button => {
     button.addEventListener("click", async () => {
       const eventId = button.dataset.submissions;
@@ -384,7 +403,8 @@ function renderEvents(events) {
       const event = await api(`/api/admin/events/${eventId}`);
       const submissions = await api(`/api/admin/events/${eventId}/submissions`);
       box.classList.toggle("hidden");
-      box.innerHTML = renderSubmissions(submissions, event.questions || []);
+      box.innerHTML = renderSubmissions(submissions, event.questions || [], eventId);
+      bindSubmissionDeleteButtons(box, eventId);
     });
   });
 
@@ -516,7 +536,7 @@ function renderSubmissions(submissions) {
   `;
 }
 
-function renderSubmissions(submissions, questions = []) {
+function renderSubmissions(submissions, questions = [], eventId = "") {
   if (!submissions.length) {
     return `<p class="empty">No registrations yet. / 暂无报名记录</p>`;
   }
@@ -534,6 +554,7 @@ function renderSubmissions(submissions, questions = []) {
           <th>Job Title</th>
           <th>Email</th>
           ${visibleQuestions.map(question => `<th>${escapeHtml(question.label)}</th>`).join("")}
+          <th>操作 / Action</th>
         </tr>
       </thead>
       <tbody>
@@ -543,6 +564,7 @@ function renderSubmissions(submissions, questions = []) {
             <td>${escapeHtml(item.jobTitle)}</td>
             <td>${escapeHtml(item.email)}</td>
             ${visibleQuestions.map(question => `<td>${renderAnswerCell((item.answers && item.answers[question.id]) || legacyAnswer(item, question.id), question)}</td>`).join("")}
+            <td><button type="button" class="danger-button" data-delete-submission="${item.id}" data-name="${escapeHtml(item.name || item.email)}" data-event-id="${escapeHtml(eventId)}">删除 / Delete</button></td>
           </tr>
         `).join("")}
       </tbody>
@@ -572,6 +594,30 @@ function legacyAnswer(item, questionId) {
     return item.futureQuestion || "";
   }
   return "";
+}
+
+function bindSubmissionDeleteButtons(box, eventId) {
+  box.querySelectorAll("[data-delete-submission]").forEach(button => {
+    button.addEventListener("click", async () => {
+      const confirmed = window.confirm(`确定删除报名人员「${button.dataset.name}」吗？\nRelated winner records for this participant will also be removed.`);
+      if (!confirmed) {
+        return;
+      }
+      try {
+        await api(`/api/admin/events/${eventId}/submissions/${button.dataset.deleteSubmission}`, { method: "DELETE", body: "" });
+        const event = await api(`/api/admin/events/${eventId}`);
+        const submissions = await api(`/api/admin/events/${eventId}/submissions`);
+        box.innerHTML = renderSubmissions(submissions, event.questions || [], eventId);
+        bindSubmissionDeleteButtons(box, eventId);
+        const winnersBox = document.querySelector(`#winners-${eventId}`);
+        if (winnersBox && !winnersBox.classList.contains("hidden")) {
+          await refreshWinners(eventId);
+        }
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+  });
 }
 
 function renderWinners(winners) {

@@ -101,6 +101,8 @@ There is no automated test suite yet. For the scaffold baseline, verify:
 - Invalid admin credentials are rejected.
 - Admin can create and edit an event.
 - Admin can configure event-specific registration questions.
+- Admin can delete individual registrations.
+- Admin can copy an existing event's settings into a clean new event.
 - Event validation rejects invalid winning count and empty single-choice options.
 - Public registration link accepts valid submissions.
 - Public registration renders dynamic event questions.
@@ -139,7 +141,7 @@ Runtime data is ignored by git.
 The latest implementation task is tracked in:
 
 ```text
-.scratch/issues/008-one-at-a-time-draw-flow.md
+.scratch/issues/009-admin-submission-delete-and-event-copy.md
 ```
 
 ## Deployment Plan

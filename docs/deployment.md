@@ -66,13 +66,28 @@ mkdir -p backend/out
 javac -encoding UTF-8 -d backend/out backend/src/main/java/com/jsys/App.java
 ```
 
-3. Start the app:
+3. Build the app and install the service guard (recommended for every formal deployment):
+
+```text
+cd /opt/jsys
+mkdir -p backend/out
+javac -encoding UTF-8 -d backend/out backend/src/main/java/com/jsys/App.java
+sudo bash scripts/linux/install-systemd.sh
+```
+
+The installer enables all of the following:
+
+- `jsys.service`: starts on server boot and restarts the Java process three seconds after an unexpected exit.
+- `jsys-healthcheck.timer`: calls `http://127.0.0.1:8080/api/health` every minute. A timeout, connection failure, or non-OK result restarts `jsys.service`.
+- Journal records: check `journalctl -u jsys -u jsys-healthcheck -f` while investigating an outage.
+
+4. Start the app manually only for a short-lived test:
 
 ```text
 java -cp backend/out com.jsys.App 8080
 ```
 
-4. Open:
+5. Open:
 
 ```text
 http://server-ip:8080/
@@ -96,6 +111,30 @@ After deployment, verify:
 - Void and redraw work.
 - Export downloads a CSV.
 - Operation records include draw, void, redraw, and export.
+- `systemctl is-enabled jsys` returns `enabled`.
+- `systemctl is-enabled jsys-healthcheck.timer` returns `enabled`.
+- `systemctl list-timers jsys-healthcheck.timer --no-pager` shows a future run time.
+
+## Availability and Recovery
+
+The local recovery guard repairs an exited or unhealthy Java process. It cannot repair an Alibaba Cloud network outage, DNS failure, firewall rule, or a server that is entirely offline: the server cannot observe those failures from inside itself.
+
+For customer-facing availability, also configure an **external** HTTP monitor (for example, Alibaba Cloud CloudMonitor) against:
+
+```text
+http://server-ip:8080/api/health
+```
+
+Use a one-minute check interval and alert on one or two consecutive failures. The alert must go to the delivery owner, so a cloud-network failure is visible immediately rather than being discovered by the customer.
+
+When a domain and HTTPS are configured, monitor the final `https://your-domain/api/health` address instead of the raw IP.
+
+After any outage, collect these before restarting anything else:
+
+```text
+journalctl -u jsys -u jsys-healthcheck --since "30 minutes ago" --no-pager
+systemctl status jsys jsys-healthcheck.timer --no-pager
+```
 
 ## Data Retention and Backup
 

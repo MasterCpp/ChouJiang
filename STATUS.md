@@ -6,6 +6,8 @@ Initial implementation is complete. The project now has a runnable local/demo ap
 
 ## Completed
 
+- Added a formal Linux service-recovery guard: boot-time service enablement, automatic Java-process restart, and a one-minute local health-check timer that restarts an unhealthy service.
+
 - Confirmed product scope: long-running multi-event H5 lucky draw system.
 - Confirmed first-version rules:
   - Multiple events, long-term use.

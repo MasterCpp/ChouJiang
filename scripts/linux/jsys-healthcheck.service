@@ -1,0 +1,9 @@
+[Unit]
+Description=Check J_Sys local health endpoint and restart it when unhealthy
+After=jsys.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/jsys/jsys-healthcheck.sh
+StandardOutput=journal
+StandardError=journal

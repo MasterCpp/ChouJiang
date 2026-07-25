@@ -2,6 +2,7 @@
   let english = false;
   const han = /[\u3400-\u9fff]/;
   const replacements = new Map([
+    ["作废", "Void"], ["补抽", "Redraw"],
     ["多场活动扫码抽奖系统", "Multi-event QR Lucky Draw"],
     ["未登录", "Not signed in"], ["已登录：", "Signed in: "], ["报名页", "Registration"],
     ["中奖结果", "Winners"], ["大屏展示", "Draw Screen"], ["新建活动", "New Event"],

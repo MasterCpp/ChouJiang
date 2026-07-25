@@ -650,7 +650,7 @@ function renderWinners(winners) {
             <td>${escapeHtml(winner.email)}</td>
             <td>${escapeHtml(winner.status)}</td>
             <td>${escapeHtml(winner.source)}</td>
-            <td>${escapeHtml(winner.createdAt)}</td>
+            <td>${formatAdminTime(winner.createdAt)}</td>
             <td>
               ${winner.status === "valid" ? `<button type="button" class="secondary" data-void="${winner.id}">作废</button>` : ""}
               ${winner.status === "voided" ? `<button type="button" class="secondary" data-redraw="${winner.id}">补抽</button>` : ""}
@@ -684,7 +684,7 @@ function renderOperations(operations) {
             <td>${escapeHtml(operation.action)}</td>
             <td>${escapeHtml(operation.targetId)}</td>
             <td>${escapeHtml(operation.operator)}</td>
-            <td>${escapeHtml(operation.createdAt)}</td>
+            <td>${formatAdminTime(operation.createdAt)}</td>
           </tr>
         `).join("")}
       </tbody>
@@ -698,6 +698,30 @@ function escapeHtml(value) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function formatAdminTime(value) {
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return escapeHtml(value);
+  }
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts
+    .filter(part => part.type !== "literal")
+    .map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day} ${values.hour}:${values.minute}:${values.second} UTC+8`;
 }
 
 async function loadEvents() {

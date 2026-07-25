@@ -15,6 +15,8 @@ OS: Ubuntu LTS
 Runtime: Java 17
 ```
 
+The application uses 16 bounded HTTP request workers, which is sufficient for the current sub-100-participant event scope. It is not a substitute for a reverse proxy or external availability monitoring.
+
 Avoid `1 core / 1 GB` for long-term use. It may run the current lightweight app, but it leaves little room for Java, logs, data backup, and future features.
 
 ## Public IP vs Domain

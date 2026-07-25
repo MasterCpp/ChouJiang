@@ -6,6 +6,8 @@ Initial implementation is complete. The project now has a runnable local/demo ap
 
 ## Completed
 
+- Replaced the default JDK HTTP request dispatcher with a bounded 16-worker executor and overload backpressure for concurrent participant page loads and submissions.
+
 - Added an English-only locale mode and isolated `jsys-en` deployment templates for a second, independently managed instance on port 8081.
 
 - Added a formal Linux service-recovery guard: boot-time service enablement, automatic Java-process restart, and a one-minute local health-check timer that restarts an unhealthy service.
@@ -68,13 +70,13 @@ Initial implementation is complete. The project now has a runnable local/demo ap
 Latest completed implementation issue:
 
 ```text
-.scratch/issues/009-admin-submission-delete-and-event-copy.md
+.scratch/issues/012-bounded-http-request-executor.md
 ```
 
 Next implementation issue:
 
 ```text
-Submission deletion and event copy are implemented. Next step is manual product QA and customer demo preparation.
+Run the updated deployment on both live instances, then repeat the public concurrent-read check.
 ```
 
 ## Next Steps
@@ -93,6 +95,10 @@ Submission deletion and event copy are implemented. Next step is manual product 
 
 ## Latest Verification
 
+- `scripts\\build.cmd` completed successfully after the bounded HTTP executor change.
+- A temporary local server handled 100 simultaneous read-only home-page requests: 100 HTTP 200 responses, with the slowest response at 0.97 seconds.
+- A temporary event handled 100 same-email concurrent submissions correctly: 1 created submission, 99 duplicate rejections, and 1 saved data row.
+- `scripts\\verify-local.cmd` passed against a temporary local server after the change.
 - Documentation structure verified.
 - All 6 initial issue files have acceptance criteria.
 - `scripts\build.cmd` completed successfully.

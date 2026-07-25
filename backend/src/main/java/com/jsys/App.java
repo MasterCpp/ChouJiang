@@ -22,10 +22,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public final class App {
     private static final int DEFAULT_PORT = 8080;
+    private static final int HTTP_WORKER_COUNT = 16;
+    private static final int HTTP_QUEUE_CAPACITY = 256;
     private static final Map<String, Instant> SESSIONS = new ConcurrentHashMap<>();
 
     private App() {
@@ -49,12 +57,35 @@ public final class App {
         server.createContext("/api/admin/events", exchange -> safe(exchange, () -> requireAdmin(exchange, () -> handleEvents(exchange, eventStore, submissionStore, winnerStore, operationStore))));
         server.createContext("/api/events", exchange -> safe(exchange, () -> handlePublicEvents(exchange, eventStore, submissionStore, winnerStore)));
         server.createContext("/", exchange -> safe(exchange, () -> serveStatic(exchange, webRoot)));
-        server.setExecutor(null);
+        ExecutorService requestExecutor = createRequestExecutor();
+        server.setExecutor(requestExecutor);
         server.start();
+
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            server.stop(0);
+            requestExecutor.shutdown();
+        }, "jsys-shutdown"));
 
         System.out.println("J_Sys dev server started");
         System.out.println("App:    http://127.0.0.1:" + port + "/");
         System.out.println("Health: http://127.0.0.1:" + port + "/api/health");
+    }
+
+    private static ExecutorService createRequestExecutor() {
+        AtomicInteger threadNumber = new AtomicInteger();
+        ThreadFactory threadFactory = runnable -> new Thread(
+                runnable,
+                "jsys-http-" + threadNumber.incrementAndGet()
+        );
+        return new ThreadPoolExecutor(
+                HTTP_WORKER_COUNT,
+                HTTP_WORKER_COUNT,
+                0L,
+                TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(HTTP_QUEUE_CAPACITY),
+                threadFactory,
+                new ThreadPoolExecutor.CallerRunsPolicy()
+        );
     }
 
     private static void handleHealth(HttpExchange exchange) throws IOException {
@@ -409,16 +440,17 @@ public final class App {
 
         SubmissionInput input = SubmissionInput.from(readForm(exchange), event.get().questions);
         List<String> errors = input.validate(event.get().questions);
-        if (submissionStore.existsEmail(eventId, input.email)) {
-            errors.add("This email has already registered for this event.");
-        }
         if (!errors.isEmpty()) {
             send(exchange, 400, "application/json", errorsJson(errors));
             return;
         }
 
-        Submission submission = submissionStore.create(eventId, input);
-        send(exchange, 201, "application/json", submissionJson(submission));
+        Optional<Submission> submission = submissionStore.createIfEmailAbsent(eventId, input);
+        if (submission.isEmpty()) {
+            send(exchange, 400, "application/json", "{\"errors\":[\"This email has already registered for this event.\"]}");
+            return;
+        }
+        send(exchange, 201, "application/json", submissionJson(submission.get()));
     }
 
     private static void handleDraw(
@@ -1189,17 +1221,13 @@ public final class App {
             return listByEvent(eventId).stream().filter(submission -> submission.id.equals(submissionId)).findFirst();
         }
 
-        synchronized boolean existsEmail(String eventId, String email) throws IOException {
-            String normalized = normalizeEmail(email);
+        synchronized Optional<Submission> createIfEmailAbsent(String eventId, SubmissionInput input) throws IOException {
+            String normalized = normalizeEmail(input.email);
             for (Submission submission : listByEvent(eventId)) {
                 if (normalizeEmail(submission.email).equals(normalized)) {
-                    return true;
+                    return Optional.empty();
                 }
             }
-            return false;
-        }
-
-        synchronized Submission create(String eventId, SubmissionInput input) throws IOException {
             Submission submission = new Submission(
                     UUID.randomUUID().toString(),
                     eventId,
@@ -1215,7 +1243,7 @@ public final class App {
             List<Submission> submissions = list();
             submissions.add(submission);
             write(submissions);
-            return submission;
+            return Optional.of(submission);
         }
 
         synchronized void deleteByEvent(String eventId) throws IOException {

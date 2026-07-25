@@ -31,3 +31,9 @@ The intended formal app directory is `/opt/jsys`; the server currently uses the 
 ## Status
 
 done
+
+## Verification
+
+- `scripts/linux/install-systemd.sh` installs and enables `jsys.service`, `jsys-healthcheck.service`, and `jsys-healthcheck.timer` for `/opt/jsys`.
+- The local health probe uses `http://127.0.0.1:8080/api/health` with an eight-second timeout and records failed checks in the system journal.
+- The deployment guide documents both internal recovery limits and the required external monitor.

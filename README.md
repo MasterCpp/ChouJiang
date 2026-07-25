@@ -4,11 +4,12 @@ J_Sys is a multi-event H5 lucky draw system for small online or hybrid meetings.
 
 ## Current Status
 
-The project has a runnable local/demo implementation. Initial issues are complete, and the app now includes dynamic per-event registration form configuration.
+The project has a runnable local/demo implementation and formal two-instance deployment support. It includes dynamic per-event registration forms, systemd recovery guards, an isolated English instance, bounded concurrent request handling, and English administrator time/action-label fixes.
 
 Read first:
 
 - `STATUS.md` for current progress and next steps.
+- `docs/operations.md` for released production-facing changes, deployment shape, safe update steps, and live verification.
 - `CONTEXT.md` for product scope and business rules.
 - `.scratch/PRD.md` for the product requirements.
 - `.scratch/issues/` for implementation tasks and acceptance criteria.
@@ -141,7 +142,7 @@ Runtime data is ignored by git.
 The latest implementation task is tracked in:
 
 ```text
-.scratch/issues/009-admin-submission-delete-and-event-copy.md
+.scratch/issues/013-admin-time-and-winner-action-labels.md
 ```
 
 ## Deployment Plan
@@ -179,3 +180,4 @@ scripts\verify-local.cmd
 - `docs/agents/`: Matt Pocock skills configuration.
 - `docs/demo.md`: demo and temporary scan-test guide.
 - `docs/deployment.md`: deployment and verification guide.
+- `docs/operations.md`: release and live-operation record.

@@ -2,7 +2,7 @@
 
 ## Current State
 
-Initial implementation is complete. The project now has a runnable local/demo application, customer-feedback UI changes, and dynamic per-event registration form configuration.
+Initial implementation is complete. The project now has local/demo support and a formal two-instance deployment shape: the existing bilingual instance on port 8080 and an isolated English instance on port 8081. Production-facing recovery, concurrency, and English admin-display changes are recorded in `docs/operations.md`.
 
 ## Completed
 
@@ -84,9 +84,11 @@ English instance concurrency verification is complete. Next step is visual QA of
 ## Next Steps
 
 1. Manually QA the dynamic form builder in the browser.
-2. Prepare a customer demo activity using the customer's final bilingual copy.
-3. Confirm whether formal delivery uses a public IP only or a domain plus HTTPS.
-4. Update deployment data backup and admin password before formal delivery.
+2. Refresh the English admin browser and visually confirm `Void` / `Redraw` and `UTC+8` display.
+3. Delete the clearly named `loadtest` registrations from the dedicated test activity before using it for a real draw.
+4. Prepare a customer demo activity using the customer's final bilingual copy.
+5. Confirm whether formal delivery uses a public IP only or a domain plus HTTPS.
+6. Update deployment data backup and admin password before formal delivery.
 
 ## Open Questions
 

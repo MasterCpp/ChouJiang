@@ -31,3 +31,9 @@ The English instance is intentionally separate from the proposed future multi-te
 ## Status
 
 done
+
+## Verification
+
+- English templates use `/opt/jsys-en`, `jsys-en.service`, `jsys-en-healthcheck.timer`, and local port 8081; they do not target the existing `/opt/jsys` data directory or `jsys.service`.
+- English mode is selected with `JSYS_LOCALE=en`; the existing default mode remains unchanged when that variable is absent.
+- The English public instance later passed the production concurrency checks recorded in Issue 012.

@@ -8,6 +8,8 @@ Initial implementation is complete. The project now has a runnable local/demo ap
 
 - Replaced the default JDK HTTP request dispatcher with a bounded 16-worker executor and overload backpressure for concurrent participant page loads and submissions.
 
+- Fixed the English instance winner actions that could display as empty buttons, and made winner/activity timestamps display explicitly in UTC+8.
+
 - Added an English-only locale mode and isolated `jsys-en` deployment templates for a second, independently managed instance on port 8081.
 
 - Added a formal Linux service-recovery guard: boot-time service enablement, automatic Java-process restart, and a one-minute local health-check timer that restarts an unhealthy service.
@@ -70,13 +72,13 @@ Initial implementation is complete. The project now has a runnable local/demo ap
 Latest completed implementation issue:
 
 ```text
-.scratch/issues/012-bounded-http-request-executor.md
+.scratch/issues/013-admin-time-and-winner-action-labels.md
 ```
 
 Next implementation issue:
 
 ```text
-Run the updated deployment on both live instances, then repeat the public concurrent-read check.
+English instance concurrency verification is complete. Next step is visual QA of the English winner actions and UTC+8 timestamps after a browser refresh.
 ```
 
 ## Next Steps
@@ -95,6 +97,8 @@ Run the updated deployment on both live instances, then repeat the public concur
 
 ## Latest Verification
 
+- Public English test activity `694a10e9-ceba-4194-9809-598d08c3e14b` passed a 100-user concurrent read test: 100 HTTP 200 responses, no timeout or non-200 response, and a 2.088-second slowest response.
+- The same activity passed a 100-user concurrent registration test: 100 HTTP 201 responses, no timeout or other error, and a 2.07-second slowest response. The activity contains those clearly named `loadtest` submissions for later cleanup.
 - `scripts\\build.cmd` completed successfully after the bounded HTTP executor change.
 - A temporary local server handled 100 simultaneous read-only home-page requests: 100 HTTP 200 responses, with the slowest response at 0.97 seconds.
 - A temporary event handled 100 same-email concurrent submissions correctly: 1 created submission, 99 duplicate rejections, and 1 saved data row.

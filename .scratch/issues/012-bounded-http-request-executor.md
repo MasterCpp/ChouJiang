@@ -36,3 +36,5 @@ Use a named, fixed-size request executor with 16 workers and a queue of 256 requ
 - A temporary local server handled 100 parallel `GET /` requests: 100 HTTP 200 responses, with the slowest response at 0.97 seconds.
 - A temporary event received 100 simultaneous same-email submissions: 1 returned `201`, 99 were rejected with `400`, and exactly 1 submission was saved.
 - `scripts\\verify-local.cmd` passed against a temporary local server.
+- Public English instance verification on 2026-07-25: `http://154.219.111.185:8081/join/694a10e9-ceba-4194-9809-598d08c3e14b` returned HTTP 200 for 100 concurrent read-only requests, with no timeouts or non-200 responses; the slowest response was 2.088 seconds.
+- The same test event accepted 100 concurrent unique-email `loadtest` registrations: 100 returned HTTP 201, with no timeouts or other errors; the slowest response was 2.07 seconds.

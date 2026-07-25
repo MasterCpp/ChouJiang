@@ -1,0 +1,21 @@
+[Unit]
+Description=J_Sys English Lucky Draw Service
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/jsys-en
+EnvironmentFile=-/etc/jsys-en/jsys-en.env
+Environment=JSYS_LOCALE=en
+ExecStart=/usr/bin/java -Xms64m -Xmx256m -cp backend/out com.jsys.App 8081
+Restart=always
+RestartSec=3
+TimeoutStopSec=20
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

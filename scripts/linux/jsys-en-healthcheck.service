@@ -1,0 +1,11 @@
+[Unit]
+Description=Check the J_Sys English instance and restart it when unhealthy
+After=jsys-en.service
+
+[Service]
+Type=oneshot
+Environment=JSYS_SERVICE_NAME=jsys-en.service
+Environment=JSYS_HEALTH_URL=http://127.0.0.1:8081/api/health
+ExecStart=/usr/local/lib/jsys-en/jsys-healthcheck.sh
+StandardOutput=journal
+StandardError=journal

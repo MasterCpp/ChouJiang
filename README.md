@@ -158,6 +158,10 @@ Detailed guides:
 - `docs/demo.md`: local demo, recording sequence, temporary customer scan test.
 - `docs/deployment.md`: server baseline, public IP/domain notes, deployment checklist, backup notes.
 
+### English Isolated Instance
+
+Set `JSYS_LOCALE=en` to render built-in copy in English. The Linux English deployment template runs a separate instance from `/opt/jsys-en` on port `8081`, with independent administrator credentials and runtime data. See `docs/deployment.md` for the installation steps.
+
 Quick local verification after starting the app:
 
 ```text

@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the J_Sys English health check every minute
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=1min
+AccuracySec=1s
+Persistent=true
+Unit=jsys-en-healthcheck.service
+
+[Install]
+WantedBy=timers.target

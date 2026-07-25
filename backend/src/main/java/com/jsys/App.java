@@ -42,6 +42,7 @@ public final class App {
 
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
         server.createContext("/api/health", exchange -> safe(exchange, () -> handleHealth(exchange)));
+        server.createContext("/api/config", exchange -> safe(exchange, () -> handlePublicConfig(exchange)));
         server.createContext("/api/admin/login", exchange -> safe(exchange, () -> handleLogin(exchange, adminAuth)));
         server.createContext("/api/admin/logout", exchange -> safe(exchange, () -> handleLogout(exchange)));
         server.createContext("/api/admin/me", exchange -> safe(exchange, () -> requireAdmin(exchange, () -> handleMe(exchange))));
@@ -68,6 +69,15 @@ public final class App {
                 + "\"time\":\"" + Instant.now() + "\""
                 + "}";
         send(exchange, 200, "application/json", body);
+    }
+
+    private static void handlePublicConfig(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            send(exchange, 405, "application/json", "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+        String locale = "en".equalsIgnoreCase(System.getenv("JSYS_LOCALE")) ? "en" : "bilingual";
+        send(exchange, 200, "application/json", "{\"locale\":\"" + locale + "\"}");
     }
 
     private static void handleLogin(HttpExchange exchange, AdminAuth adminAuth) throws IOException {

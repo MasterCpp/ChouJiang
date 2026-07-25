@@ -136,6 +136,47 @@ journalctl -u jsys -u jsys-healthcheck --since "30 minutes ago" --no-pager
 systemctl status jsys jsys-healthcheck.timer --no-pager
 ```
 
+## English Instance on the Same Server
+
+The English instance is a separate process and data directory. It does not share activities, registrations, winners, administrator credentials, or runtime data with the existing instance.
+
+```text
+Existing instance: /opt/jsys       -> port 8080
+English instance:  /opt/jsys-en    -> port 8081
+```
+
+Deploy the current repository into `/opt/jsys-en`, keeping its `data/` directory empty. Create a separate administrator configuration before starting it:
+
+```text
+mkdir -p /etc/jsys-en
+chmod 750 /etc/jsys-en
+```
+
+Create `/etc/jsys-en/jsys-en.env` with a separate username and strong password:
+
+```text
+ADMIN_USERNAME=english-admin
+ADMIN_PASSWORD=replace-with-a-strong-unique-password
+```
+
+Then build and install only the English service:
+
+```text
+cd /opt/jsys-en
+mkdir -p backend/out
+javac -encoding UTF-8 -d backend/out backend/src/main/java/com/jsys/App.java
+bash scripts/linux/install-english-systemd.sh
+```
+
+Verify without touching the existing service:
+
+```text
+systemctl status jsys-en jsys-en-healthcheck.timer --no-pager
+curl -fsS http://127.0.0.1:8081/api/health
+```
+
+For initial testing, open `http://server-ip:8081/`. Long-term, use a separate English domain and HTTPS through a reverse proxy.
+
 ## Data Retention and Backup
 
 Runtime data files:

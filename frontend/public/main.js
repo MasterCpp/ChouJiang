@@ -18,7 +18,7 @@ const topbarActions = document.querySelector(".topbar-actions");
 const questionList = document.querySelector("#questionList");
 const addQuestionButton = document.querySelector("#addQuestionButton");
 
-const defaults = {
+let defaults = {
   title: "",
   satisfactionQuestion: "您对今日主题分享的整体满意程度？ / Overall satisfaction with today's sharing?",
   topicQuestion: "您今天最满意哪方面的分享？ / Which topic are you most satisfied with today?",
@@ -380,7 +380,9 @@ function renderEvents(events) {
 
   eventList.querySelectorAll("[data-copy-event]").forEach(button => {
     button.addEventListener("click", async () => {
-      const confirmed = window.confirm(`复制活动「${button.dataset.title}」吗？\nOnly event settings will be copied. Registrations and winners will not be copied.`);
+      const confirmed = window.confirm(window.JSysLocale.isEnglish()
+        ? `Copy event “${button.dataset.title}”?\nOnly settings will be copied. Registrations and winners will not be copied.`
+        : `复制活动「${button.dataset.title}」吗？\nOnly event settings will be copied. Registrations and winners will not be copied.`);
       if (!confirmed) {
         return;
       }
@@ -434,7 +436,9 @@ function renderEvents(events) {
 
   eventList.querySelectorAll("[data-delete]").forEach(button => {
     button.addEventListener("click", async () => {
-      const confirmed = window.confirm(`确定删除活动「${button.dataset.title}」吗？\nThis will delete the event, submissions, winners, and operation records.`);
+      const confirmed = window.confirm(window.JSysLocale.isEnglish()
+        ? `Delete event “${button.dataset.title}”?\nThis will delete the event, submissions, winners, and operation records.`
+        : `确定删除活动「${button.dataset.title}」吗？\nThis will delete the event, submissions, winners, and operation records.`);
       if (!confirmed) {
         return;
       }
@@ -489,7 +493,7 @@ async function refreshWinners(eventId) {
   });
   box.querySelectorAll("[data-delete-winner]").forEach(button => {
     button.addEventListener("click", async () => {
-      const confirmed = window.confirm("确定删除这条中奖记录吗？/ Delete this winner record?");
+      const confirmed = window.confirm(window.JSysLocale.isEnglish() ? "Delete this winner record?" : "确定删除这条中奖记录吗？/ Delete this winner record?");
       if (!confirmed) {
         return;
       }
@@ -599,7 +603,9 @@ function legacyAnswer(item, questionId) {
 function bindSubmissionDeleteButtons(box, eventId) {
   box.querySelectorAll("[data-delete-submission]").forEach(button => {
     button.addEventListener("click", async () => {
-      const confirmed = window.confirm(`确定删除报名人员「${button.dataset.name}」吗？\nRelated winner records for this participant will also be removed.`);
+      const confirmed = window.confirm(window.JSysLocale.isEnglish()
+        ? `Delete registration for “${button.dataset.name}”?\nRelated winner records for this participant will also be removed.`
+        : `确定删除报名人员「${button.dataset.name}」吗？\nRelated winner records for this participant will also be removed.`);
       if (!confirmed) {
         return;
       }
@@ -1196,6 +1202,13 @@ async function bootAdmin() {
 }
 
 async function boot() {
+  await window.JSysLocale.load();
+  if (window.JSysLocale.isEnglish()) {
+    defaults = Object.fromEntries(Object.entries(defaults).map(([key, value]) => [
+      key,
+      typeof value === "string" ? value.split("\n").map(window.JSysLocale.toEnglish).join("\n") : value
+    ]));
+  }
   const joinMatch = window.location.pathname.match(/^\/join\/([^/]+)$/);
   const resultMatch = window.location.pathname.match(/^\/results\/([^/]+)$/);
   const screenMatch = window.location.pathname.match(/^\/screen\/([^/]+)$/);

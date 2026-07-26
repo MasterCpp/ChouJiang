@@ -10,6 +10,8 @@ Initial implementation is complete. The project now has local/demo support and a
 
 - Fixed the English instance winner actions that could display as empty buttons, and made winner/activity timestamps display explicitly in UTC+8.
 
+- Removed the login form's automatic administrator credential prefill while preserving the existing configured-credential behavior.
+
 - Added an English-only locale mode and isolated `jsys-en` deployment templates for a second, independently managed instance on port 8081.
 
 - Added a formal Linux service-recovery guard: boot-time service enablement, automatic Java-process restart, and a one-minute local health-check timer that restarts an unhealthy service.
@@ -72,13 +74,13 @@ Initial implementation is complete. The project now has local/demo support and a
 Latest completed implementation issue:
 
 ```text
-.scratch/issues/013-admin-time-and-winner-action-labels.md
+.scratch/issues/014-remove-default-admin-credentials.md
 ```
 
 Next implementation issue:
 
 ```text
-English instance concurrency verification is complete. Next step is visual QA of the English winner actions and UTC+8 timestamps after a browser refresh.
+Deploy the login-form prefill removal to the English instance, then verify the form starts empty and accepts the configured credentials.
 ```
 
 ## Next Steps

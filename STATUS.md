@@ -12,6 +12,8 @@ Initial implementation is complete. The project now has local/demo support and a
 
 - Removed the login form's automatic administrator credential prefill while preserving the existing configured-credential behavior.
 
+- Preserved user-provided multilingual content in the English interface by excluding it from fixed-copy translation.
+
 - Added an English-only locale mode and isolated `jsys-en` deployment templates for a second, independently managed instance on port 8081.
 
 - Added a formal Linux service-recovery guard: boot-time service enablement, automatic Java-process restart, and a one-minute local health-check timer that restarts an unhealthy service.
@@ -74,13 +76,13 @@ Initial implementation is complete. The project now has local/demo support and a
 Latest completed implementation issue:
 
 ```text
-.scratch/issues/014-remove-default-admin-credentials.md
+.scratch/issues/015-preserve-user-content-in-english-mode.md
 ```
 
 Next implementation issue:
 
 ```text
-Deploy the login-form prefill removal to the English instance, then verify the form starts empty and accepts the configured credentials.
+Deploy the English user-content display fix, then verify existing Chinese registration data renders unchanged.
 ```
 
 ## Next Steps

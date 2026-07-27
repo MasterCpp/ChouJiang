@@ -41,7 +41,10 @@
     if (!english || !root) return;
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
-        return node.parentElement && !["SCRIPT", "STYLE"].includes(node.parentElement.tagName) && han.test(node.nodeValue)
+        return node.parentElement
+          && !node.parentElement.closest("[data-user-content]")
+          && !["SCRIPT", "STYLE"].includes(node.parentElement.tagName)
+          && han.test(node.nodeValue)
           ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
       }
     });
@@ -50,7 +53,9 @@
     nodes.forEach(node => { node.nodeValue = englishText(node.nodeValue); });
     root.querySelectorAll("[alt], [title], [placeholder]").forEach(element => {
       ["alt", "title", "placeholder"].forEach(attribute => {
-        if (element.hasAttribute(attribute)) element.setAttribute(attribute, englishText(element.getAttribute(attribute)));
+        if (!element.closest("[data-user-content]") && element.hasAttribute(attribute)) {
+          element.setAttribute(attribute, englishText(element.getAttribute(attribute)));
+        }
       });
     });
   }
@@ -68,7 +73,9 @@
       document.title = "J_Sys Lucky Draw";
       translate(document.documentElement);
       new MutationObserver(records => records.forEach(record => record.addedNodes.forEach(node => {
-        if (node.nodeType === Node.TEXT_NODE && han.test(node.nodeValue)) node.nodeValue = englishText(node.nodeValue);
+        if (node.nodeType === Node.TEXT_NODE
+          && !node.parentElement?.closest("[data-user-content]")
+          && han.test(node.nodeValue)) node.nodeValue = englishText(node.nodeValue);
         if (node.nodeType === Node.ELEMENT_NODE) translate(node);
       }))).observe(document.body, { childList: true, subtree: true });
     }

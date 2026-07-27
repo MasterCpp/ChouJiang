@@ -314,7 +314,7 @@ function renderEvents(events) {
     return `
       <article class="event-card">
         <div class="event-title-row">
-          <h3>${escapeHtml(event.title || "未命名活动 / Untitled Event")}</h3>
+          <h3 data-user-content>${escapeHtml(event.title || "Untitled Event")}</h3>
           <span class="status-badge ${escapeHtml(event.status)}">${escapeHtml(event.status)}</span>
         </div>
         <div class="event-body">
@@ -557,16 +557,16 @@ function renderSubmissions(submissions, questions = [], eventId = "") {
           <th>Name</th>
           <th>Job Title</th>
           <th>Email</th>
-          ${visibleQuestions.map(question => `<th>${escapeHtml(question.label)}</th>`).join("")}
+          ${visibleQuestions.map(question => `<th data-user-content>${escapeHtml(question.label)}</th>`).join("")}
           <th>操作 / Action</th>
         </tr>
       </thead>
       <tbody>
         ${submissions.map(item => `
           <tr>
-            <td>${escapeHtml(item.name)}</td>
-            <td>${escapeHtml(item.jobTitle)}</td>
-            <td>${escapeHtml(item.email)}</td>
+            <td data-user-content>${escapeHtml(item.name)}</td>
+            <td data-user-content>${escapeHtml(item.jobTitle)}</td>
+            <td data-user-content>${escapeHtml(item.email)}</td>
             ${visibleQuestions.map(question => `<td>${renderAnswerCell((item.answers && item.answers[question.id]) || legacyAnswer(item, question.id), question)}</td>`).join("")}
             <td><button type="button" class="danger-button" data-delete-submission="${item.id}" data-name="${escapeHtml(item.name || item.email)}" data-event-id="${escapeHtml(eventId)}">删除 / Delete</button></td>
           </tr>
@@ -582,9 +582,9 @@ function renderAnswerCell(answer, question) {
     if (!values.length) {
       return "";
     }
-    return `<ul class="answer-list">${values.map(value => `<li>${escapeHtml(value)}</li>`).join("")}</ul>`;
+    return `<ul class="answer-list">${values.map(value => `<li data-user-content>${escapeHtml(value)}</li>`).join("")}</ul>`;
   }
-  return escapeHtml(answer || "");
+  return `<span data-user-content>${escapeHtml(answer || "")}</span>`;
 }
 
 function legacyAnswer(item, questionId) {
@@ -646,8 +646,8 @@ function renderWinners(winners) {
       <tbody>
         ${winners.map(winner => `
           <tr>
-            <td>${escapeHtml(winner.name)}</td>
-            <td>${escapeHtml(winner.email)}</td>
+            <td data-user-content>${escapeHtml(winner.name)}</td>
+            <td data-user-content>${escapeHtml(winner.email)}</td>
             <td>${escapeHtml(winner.status)}</td>
             <td>${escapeHtml(winner.source)}</td>
             <td>${formatAdminTime(winner.createdAt)}</td>
@@ -805,7 +805,7 @@ function renderDynamicQuestionInput(question) {
   if (question.type === "score") {
     return `
       <label>
-        ${escapeHtml(question.label)}
+        <span data-user-content>${escapeHtml(question.label)}</span>
         <select name="${escapeHtml(name)}" ${required}>
           <option value="">请选择 / Select</option>
           ${Array.from({ length: 10 }, (_, index) => `<option value="${index + 1}">${index + 1}</option>`).join("")}
@@ -816,11 +816,11 @@ function renderDynamicQuestionInput(question) {
   if (question.type === "single") {
     return `
       <fieldset>
-        <legend>${escapeHtml(question.label)}</legend>
+        <legend data-user-content>${escapeHtml(question.label)}</legend>
         ${(question.options || []).map(option => `
           <label class="radio-line">
             <input type="radio" name="${escapeHtml(name)}" value="${escapeHtml(option)}" ${required} />
-            <span>${escapeHtml(option)}</span>
+            <span data-user-content>${escapeHtml(option)}</span>
           </label>
         `).join("")}
       </fieldset>
@@ -829,17 +829,17 @@ function renderDynamicQuestionInput(question) {
   if (question.type === "multiple") {
     return `
       <fieldset>
-        <legend>${escapeHtml(question.label)}</legend>
+        <legend data-user-content>${escapeHtml(question.label)}</legend>
         ${(question.options || []).map(option => `
           <label class="radio-line">
             <input type="checkbox" name="${escapeHtml(name)}" value="${escapeHtml(option)}" />
-            <span>${escapeHtml(option)}</span>
+            <span data-user-content>${escapeHtml(option)}</span>
           </label>
         `).join("")}
       </fieldset>
     `;
   }
-  return `<label>${escapeHtml(question.label)} <textarea name="${escapeHtml(name)}" rows="4" ${required}></textarea></label>`;
+  return `<label><span data-user-content>${escapeHtml(question.label)}</span> <textarea name="${escapeHtml(name)}" rows="4" ${required}></textarea></label>`;
 }
 
 function renderJoinForm(event) {
@@ -854,13 +854,13 @@ function renderJoinForm(event) {
 
   const questions = event.questions && event.questions.length ? event.questions : defaultQuestions();
   joinView.innerHTML = `
-    <h2>${escapeHtml(event.title)}</h2>
+    <h2 data-user-content>${escapeHtml(event.title)}</h2>
     <form id="joinForm" class="form-grid">
       <label>姓名 / Name <input name="name" required /></label>
       <label>职位 / Job Title <input name="jobTitle" required /></label>
       <label>邮箱 / Email <input name="email" type="email" required /></label>
       ${questions.map(renderDynamicQuestionInput).join("")}
-      <p class="privacy">${escapeHtml(event.privacyNotice)}</p>
+      <p class="privacy" data-user-content>${escapeHtml(event.privacyNotice)}</p>
       <button type="submit">提交报名 / Submit</button>
     </form>
     <p id="joinMessage" class="message"></p>
@@ -896,17 +896,17 @@ async function renderResultPage(eventId) {
     const result = await api(`/api/events/${eventId}/results`);
     if (result.state === "waiting") {
       resultView.innerHTML = `
-        <h2>${escapeHtml(event.title)}</h2>
+        <h2 data-user-content>${escapeHtml(event.title)}</h2>
         <p class="waiting">抽奖尚未完成，请关注会议画面或稍后刷新。</p>
         <p class="waiting">The draw has not finished yet. Please watch the meeting screen or refresh later.</p>
       `;
       return;
     }
     resultView.innerHTML = `
-      <h2>${escapeHtml(event.title)}</h2>
+      <h2 data-user-content>${escapeHtml(event.title)}</h2>
       <p class="waiting">中奖结果 / Winners</p>
       <ul class="winner-list">
-        ${result.winners.map(winner => `<li>${escapeHtml(winner.name)} <span>${escapeHtml(winner.email)}</span></li>`).join("")}
+        ${result.winners.map(winner => `<li data-user-content>${escapeHtml(winner.name)} <span>${escapeHtml(winner.email)}</span></li>`).join("")}
       </ul>
     `;
   } catch (error) {
@@ -921,12 +921,12 @@ function renderScreenCompleted(event, result, adminSession) {
   screenView.innerHTML = `
     <div class="screen-stage">
       <p class="eyebrow">Lucky Draw</p>
-      <h2>${escapeHtml(event.title)}</h2>
-      <div id="rollingName" class="rolling-name">Ready</div>
+      <h2 data-user-content>${escapeHtml(event.title)}</h2>
+      <div id="rollingName" class="rolling-name" data-user-content>Ready</div>
       <p class="screen-progress">已抽 ${winnerCount} / ${event.winningCount} · Winners ${winnerCount} / ${event.winningCount}</p>
       <div id="screenCongrats" class="screen-congrats hidden">恭喜中奖 / Congratulations</div>
       <ul id="screenWinners" class="screen-winners hidden">
-        ${result.winners.map(winner => `<li>${escapeHtml(winner.name)}<span>${escapeHtml(winner.email)}</span></li>`).join("")}
+        ${result.winners.map(winner => `<li data-user-content>${escapeHtml(winner.name)}<span>${escapeHtml(winner.email)}</span></li>`).join("")}
       </ul>
       ${canDrawMore || canPickAnother ? `
         <div class="screen-actions hidden" id="screenNextActions">
@@ -966,8 +966,8 @@ function renderScreenRolling(event, names) {
   screenView.innerHTML = `
     <div class="screen-stage">
       <p class="eyebrow">Lucky Draw</p>
-      <h2>${escapeHtml(event.title)}</h2>
-      <div id="rollingName" class="rolling-name">Ready</div>
+      <h2 data-user-content>${escapeHtml(event.title)}</h2>
+      <div id="rollingName" class="rolling-name" data-user-content>Ready</div>
       <div class="screen-actions">
         <button id="screenRevealButton" type="button" class="screen-draw-button">确认抽奖 / Confirm Draw</button>
       </div>

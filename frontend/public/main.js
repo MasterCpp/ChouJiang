@@ -750,7 +750,7 @@ function renderJoinForm(event) {
   }
 
   joinView.innerHTML = `
-    <h2>${escapeHtml(event.title)}</h2>
+    <h2 data-user-content>${escapeHtml(event.title)}</h2>
     <form id="joinForm" class="form-grid">
       <label>姓名 / Name <input name="name" required /></label>
       <label>职位 / Job Title <input name="jobTitle" required /></label>
@@ -1093,7 +1093,7 @@ async function renderScreenPage(eventId) {
       screenView.innerHTML = `
         <div class="screen-stage">
           <p class="eyebrow">Lucky Draw</p>
-          <h2>${escapeHtml(event.title)}</h2>
+          <h2 data-user-content>${escapeHtml(event.title)}</h2>
           <p class="screen-waiting">抽奖尚未开始 / Waiting for the draw</p>
           ${adminSession ? `
             <div class="screen-actions">

@@ -14,6 +14,8 @@ Initial implementation is complete. The project now has local/demo support and a
 
 - Preserved user-provided multilingual content in the English interface by excluding it from fixed-copy translation.
 
+- Preserved mixed-language event titles on the English draw screen before the draw starts.
+
 - Added an English-only locale mode and isolated `jsys-en` deployment templates for a second, independently managed instance on port 8081.
 
 - Added a formal Linux service-recovery guard: boot-time service enablement, automatic Java-process restart, and a one-minute local health-check timer that restarts an unhealthy service.
@@ -76,13 +78,13 @@ Initial implementation is complete. The project now has local/demo support and a
 Latest completed implementation issue:
 
 ```text
-.scratch/issues/015-preserve-user-content-in-english-mode.md
+.scratch/issues/016-preserve-waiting-screen-event-title.md
 ```
 
 Next implementation issue:
 
 ```text
-Deploy the English user-content display fix, then verify existing Chinese registration data renders unchanged.
+Deploy the waiting-screen event-title fix, then verify a mixed-language title remains unchanged before and after the draw.
 ```
 
 ## Next Steps

@@ -15,6 +15,7 @@
         </div>
         <div class="topbar-actions hidden">
           <span id="sessionLabel" class="session-label">未登录</span>
+          <button id="settingsButton" class="secondary hidden" type="button">账号设置</button>
           <button id="logoutButton" class="secondary hidden" type="button">退出</button>
         </div>
       </header>
@@ -24,10 +25,10 @@
       <section id="screenView" class="screen-view hidden"></section>
 
       <section id="loginView" class="panel narrow hidden">
-        <h2>管理员登录 / Admin Login</h2>
+        <h2 id="loginTitle">管理员登录 / Admin Login</h2>
         <form id="loginForm" class="form-grid">
           <label>
-            账号 / Username
+            <span id="loginIdentityLabel">账号 / Username</span>
             <input name="username" autocomplete="username" required />
           </label>
           <label>
@@ -36,7 +37,55 @@
           </label>
           <button type="submit">登录 / Login</button>
         </form>
+        <button id="showRegisterButton" class="secondary hidden" type="button">注册新的分公司账号</button>
         <p id="loginMessage" class="message"></p>
+      </section>
+
+      <section id="registerView" class="panel narrow hidden">
+        <h2>注册分公司账号</h2>
+        <p>注册后立即启用；每个账号的数据和活动彼此隔离。</p>
+        <form id="registerForm" class="form-grid">
+          <label>
+            工作区名称
+            <input name="workspaceName" maxlength="100" required />
+          </label>
+          <label>
+            邮箱
+            <input name="email" type="email" autocomplete="email" required />
+          </label>
+          <label>
+            密码（8–128 位）
+            <input name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required />
+          </label>
+          <button type="submit">注册并进入工作区</button>
+          <button id="backToLoginButton" class="secondary" type="button">返回登录</button>
+        </form>
+        <p id="registerMessage" class="message"></p>
+      </section>
+
+      <section id="settingsView" class="panel narrow hidden">
+        <h2>账号设置</h2>
+        <form id="settingsForm" class="form-grid">
+          <label>
+            登录邮箱
+            <input id="settingsEmail" name="email" readonly />
+          </label>
+          <label>
+            工作区名称
+            <input id="settingsWorkspaceName" name="workspaceName" maxlength="100" required />
+          </label>
+          <label>
+            当前密码
+            <input name="currentPassword" type="password" autocomplete="current-password" required />
+          </label>
+          <label>
+            新密码（8–128 位）
+            <input name="newPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password" required />
+          </label>
+          <button type="submit">保存设置</button>
+          <button id="backToAdminButton" class="secondary" type="button">返回活动管理</button>
+        </form>
+        <p id="settingsMessage" class="message"></p>
       </section>
 
       <section id="adminView" class="hidden">

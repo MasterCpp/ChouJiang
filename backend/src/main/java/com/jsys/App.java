@@ -90,20 +90,20 @@ public final class App {
                 System.getenv("CHINA_ACCOUNT_EMAIL"),
                 System.getenv("CHINA_ACCOUNT_PASSWORD")
         );
-        EventStore eventStore = new EventStore(data, chinaAccount.accountId());
-        SubmissionStore submissionStore = new SubmissionStore(data, chinaAccount.accountId());
-        WinnerStore winnerStore = new WinnerStore(data, chinaAccount.accountId());
-        OperationStore operationStore = new OperationStore(data, chinaAccount.accountId());
+        EventStore publicEventStore = new EventStore(data, null);
+        SubmissionStore publicSubmissionStore = new SubmissionStore(data, null);
+        WinnerStore publicWinnerStore = new WinnerStore(data, null);
 
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
         server.createContext("/api/health", exchange -> safe(exchange, () -> handleHealth(exchange)));
         server.createContext("/api/config", exchange -> safe(exchange, () -> handlePublicConfig(exchange)));
         server.createContext("/api/admin/login", exchange -> safe(exchange, () -> handleChineseLogin(exchange, data)));
+        server.createContext("/api/admin/register", exchange -> safe(exchange, () -> handleChineseRegistration(exchange, data)));
         server.createContext("/api/admin/logout", exchange -> safe(exchange, () -> handleChineseLogout(exchange, data)));
         server.createContext("/api/admin/me", exchange -> safe(exchange, () -> handleChineseMe(exchange, data)));
-        server.createContext("/api/admin/events", exchange -> safe(exchange, () -> requireChineseOwner(exchange, data,
-                () -> handleEvents(exchange, eventStore, submissionStore, winnerStore, operationStore))));
-        server.createContext("/api/events", exchange -> safe(exchange, () -> handlePublicEvents(exchange, eventStore, submissionStore, winnerStore)));
+        server.createContext("/api/admin/settings", exchange -> safe(exchange, () -> handleChineseSettings(exchange, data)));
+        server.createContext("/api/admin/events", exchange -> safe(exchange, () -> handleChineseOwnerEvents(exchange, data)));
+        server.createContext("/api/events", exchange -> safe(exchange, () -> handlePublicEvents(exchange, publicEventStore, publicSubmissionStore, publicWinnerStore)));
         server.createContext("/", exchange -> safe(exchange, () -> serveStatic(exchange, webRoot)));
         ExecutorService requestExecutor = createRequestExecutor();
         server.setExecutor(requestExecutor);
@@ -192,6 +192,49 @@ public final class App {
         ChineseData.OwnerSession owner = session.get();
         exchange.getResponseHeaders().add("Set-Cookie", "jsys_session=" + owner.token() + "; Path=/; HttpOnly; SameSite=Lax");
         send(exchange, 200, "application/json", "{\"ok\":true,\"username\":\"" + json(owner.email()) + "\"}");
+    }
+
+    private static void handleChineseRegistration(HttpExchange exchange, ChineseData data) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) { send(exchange, 405, "application/json", "{\"error\":\"Method not allowed\"}"); return; }
+        Map<String, String> form = readForm(exchange);
+        try {
+            ChineseData.OwnerSession owner = data.registerOwner(form.get("workspaceName"), form.get("email"), form.get("password"));
+            exchange.getResponseHeaders().add("Set-Cookie", "jsys_session=" + owner.token() + "; Path=/; HttpOnly; SameSite=Lax");
+            send(exchange, 201, "application/json", "{\"ok\":true,\"username\":\"" + json(owner.email()) + "\"}");
+        } catch (ChineseData.RegistrationException error) {
+            send(exchange, 400, "application/json", "{\"error\":\"" + json(error.getMessage()) + "\"}");
+        }
+    }
+
+    private static void handleChineseOwnerEvents(HttpExchange exchange, ChineseData data) throws IOException {
+        Optional<String> token = readSession(exchange);
+        Optional<ChineseData.OwnerSession> owner = token.isEmpty() ? Optional.empty() : data.ownerForSession(token.get());
+        if (owner.isEmpty()) { send(exchange, 401, "application/json", "{\"error\":\"Authentication required\"}"); return; }
+        ChineseData.OwnerSession session = owner.get();
+        handleEvents(exchange, new EventStore(data, session.accountId()), new SubmissionStore(data, session.accountId()),
+                new WinnerStore(data, session.accountId()), new OperationStore(data, session.accountId(), session.email()));
+    }
+
+    private static void handleChineseSettings(HttpExchange exchange, ChineseData data) throws IOException {
+        Optional<String> token = readSession(exchange);
+        Optional<ChineseData.OwnerSession> owner = token.isEmpty() ? Optional.empty() : data.ownerForSession(token.get());
+        if (owner.isEmpty()) { send(exchange, 401, "application/json", "{\"error\":\"Authentication required\"}"); return; }
+        if ("GET".equals(exchange.getRequestMethod())) {
+            ChineseData.OwnerSettings settings = data.settings(owner.get());
+            send(exchange, 200, "application/json", "{\"workspaceName\":\"" + json(settings.workspaceName()) + "\",\"email\":\"" + json(settings.email()) + "\"}");
+            return;
+        }
+        if ("PUT".equals(exchange.getRequestMethod()) || "POST".equals(exchange.getRequestMethod())) {
+            Map<String, String> form = readForm(exchange);
+            try {
+                ChineseData.OwnerSettings settings = data.updateSettings(owner.get(), form.get("workspaceName"), form.get("currentPassword"), form.get("newPassword"));
+                send(exchange, 200, "application/json", "{\"ok\":true,\"workspaceName\":\"" + json(settings.workspaceName()) + "\",\"email\":\"" + json(settings.email()) + "\"}");
+            } catch (ChineseData.RegistrationException error) {
+                send(exchange, 400, "application/json", "{\"error\":\"" + json(error.getMessage()) + "\"}");
+            }
+            return;
+        }
+        send(exchange, 405, "application/json", "{\"error\":\"Method not allowed\"}");
     }
 
     private static void handleLogout(HttpExchange exchange) throws IOException {
@@ -1569,11 +1612,13 @@ public final class App {
         private final Path file;
         private final ChineseData chineseData;
         private final String accountId;
+        private final String operatorOverride;
 
         OperationStore(Path file) throws IOException {
             this.file = file;
             this.chineseData = null;
             this.accountId = null;
+            this.operatorOverride = null;
             Files.createDirectories(file.getParent());
             if (!Files.exists(file)) {
                 Files.createFile(file);
@@ -1581,9 +1626,14 @@ public final class App {
         }
 
         OperationStore(ChineseData chineseData, String accountId) {
+            this(chineseData, accountId, null);
+        }
+
+        OperationStore(ChineseData chineseData, String accountId, String operatorOverride) {
             this.file = null;
             this.chineseData = chineseData;
             this.accountId = accountId;
+            this.operatorOverride = operatorOverride;
         }
 
         synchronized List<Operation> list() throws IOException {
@@ -1615,7 +1665,7 @@ public final class App {
                     eventId,
                     action,
                     targetId,
-                    operator,
+                    operatorOverride == null ? operator : operatorOverride,
                     Instant.now().toString()
             );
             List<Operation> operations = list();

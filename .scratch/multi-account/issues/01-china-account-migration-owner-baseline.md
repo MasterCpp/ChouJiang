@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately.
 
-**Status:** in-progress
+**Status:** done
 
 - [ ] 中文实例首次迁移创建名称为“`中国账号`”的工作区和配置的 Owner。
 - [ ] 历史业务数据和已有公开 URL 在迁移后仍可通过中国账号使用。

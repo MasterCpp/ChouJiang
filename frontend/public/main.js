@@ -1,15 +1,27 @@
 const loginView = document.querySelector("#loginView");
+const registerView = document.querySelector("#registerView");
+const settingsView = document.querySelector("#settingsView");
 const adminView = document.querySelector("#adminView");
 const joinView = document.querySelector("#joinView");
 const resultView = document.querySelector("#resultView");
 const screenView = document.querySelector("#screenView");
 const loginForm = document.querySelector("#loginForm");
+const registerForm = document.querySelector("#registerForm");
+const settingsForm = document.querySelector("#settingsForm");
 const eventForm = document.querySelector("#eventForm");
 const eventList = document.querySelector("#eventList");
 const loginMessage = document.querySelector("#loginMessage");
+const registerMessage = document.querySelector("#registerMessage");
+const settingsMessage = document.querySelector("#settingsMessage");
 const eventMessage = document.querySelector("#eventMessage");
 const sessionLabel = document.querySelector("#sessionLabel");
 const logoutButton = document.querySelector("#logoutButton");
+const settingsButton = document.querySelector("#settingsButton");
+const showRegisterButton = document.querySelector("#showRegisterButton");
+const backToLoginButton = document.querySelector("#backToLoginButton");
+const backToAdminButton = document.querySelector("#backToAdminButton");
+const loginTitle = document.querySelector("#loginTitle");
+const loginIdentityLabel = document.querySelector("#loginIdentityLabel");
 const newEventButton = document.querySelector("#newEventButton");
 const resetFormButton = document.querySelector("#resetFormButton");
 const formTitle = document.querySelector("#formTitle");
@@ -40,6 +52,7 @@ let defaults = {
 };
 
 let currentQuestions = [];
+let chineseAccountMode = false;
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -83,7 +96,7 @@ function encodeForm(form) {
 }
 
 function showOnly(view) {
-  [loginView, adminView, joinView, resultView, screenView].forEach(item => item.classList.add("hidden"));
+  [loginView, registerView, settingsView, adminView, joinView, resultView, screenView].forEach(item => item.classList.add("hidden"));
   view.classList.remove("hidden");
 }
 
@@ -101,6 +114,7 @@ function showAdmin(username) {
   topbar.classList.remove("hidden");
   topbarActions.classList.remove("hidden");
   logoutButton.classList.remove("hidden");
+  settingsButton.classList.toggle("hidden", !chineseAccountMode);
   sessionLabel.textContent = `已登录：${username}`;
 }
 
@@ -110,7 +124,52 @@ function showLogin() {
   topbar.classList.remove("hidden");
   topbarActions.classList.remove("hidden");
   logoutButton.classList.add("hidden");
+  settingsButton.classList.add("hidden");
   sessionLabel.textContent = "未登录";
+}
+
+function showRegister() {
+  showOnly(registerView);
+  document.body.classList.remove("public-page");
+  topbar.classList.remove("hidden");
+  topbarActions.classList.remove("hidden");
+  logoutButton.classList.add("hidden");
+  settingsButton.classList.add("hidden");
+  sessionLabel.textContent = "注册分公司账号";
+  registerMessage.textContent = "";
+}
+
+async function showSettings() {
+  settingsMessage.textContent = "";
+  try {
+    const settings = await api("/api/admin/settings");
+    settingsForm.elements.email.value = settings.email;
+    settingsForm.elements.workspaceName.value = settings.workspaceName;
+    settingsForm.elements.currentPassword.value = "";
+    settingsForm.elements.newPassword.value = "";
+    showOnly(settingsView);
+    document.body.classList.remove("public-page");
+    topbar.classList.remove("hidden");
+    topbarActions.classList.remove("hidden");
+    logoutButton.classList.remove("hidden");
+    settingsButton.classList.remove("hidden");
+    sessionLabel.textContent = `已登录：${settings.email}`;
+  } catch (error) {
+    loginMessage.textContent = error.message;
+    showLogin();
+  }
+}
+
+function configureAccountMode() {
+  chineseAccountMode = !window.JSysLocale.isEnglish();
+  if (chineseAccountMode) {
+    loginTitle.textContent = "账号登录";
+    loginIdentityLabel.textContent = "邮箱";
+    loginForm.elements.username.autocomplete = "email";
+    showRegisterButton.classList.remove("hidden");
+  } else {
+    showRegisterButton.classList.add("hidden");
+  }
 }
 
 function newQuestion(type = "text") {
@@ -1179,6 +1238,50 @@ loginForm.addEventListener("submit", async event => {
   }
 });
 
+showRegisterButton.addEventListener("click", showRegister);
+backToLoginButton.addEventListener("click", showLogin);
+backToAdminButton.addEventListener("click", async () => {
+  const user = await api("/api/admin/me").catch(() => null);
+  if (!user) {
+    showLogin();
+    return;
+  }
+  showAdmin(user.username);
+  await loadEvents();
+});
+
+registerForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  registerMessage.textContent = "";
+  try {
+    const user = await api("/api/admin/register", {
+      method: "POST",
+      body: encodeForm(registerForm)
+    });
+    showAdmin(user.username);
+    fillDefaults();
+    await loadEvents();
+  } catch (error) {
+    registerMessage.textContent = error.message;
+  }
+});
+
+settingsButton.addEventListener("click", showSettings);
+settingsForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  settingsMessage.textContent = "";
+  try {
+    const updated = await api("/api/admin/settings", {
+      method: "PUT",
+      body: encodeForm(settingsForm)
+    });
+    showLogin();
+    loginMessage.textContent = `设置已保存（${updated.workspaceName}），请使用新密码重新登录。`;
+  } catch (error) {
+    settingsMessage.textContent = error.message;
+  }
+});
+
 logoutButton.addEventListener("click", async () => {
   await api("/api/admin/logout", { method: "POST", body: "" }).catch(() => {});
   showLogin();
@@ -1227,6 +1330,7 @@ async function bootAdmin() {
 
 async function boot() {
   await window.JSysLocale.load();
+  configureAccountMode();
   if (window.JSysLocale.isEnglish()) {
     defaults = Object.fromEntries(Object.entries(defaults).map(([key, value]) => [
       key,

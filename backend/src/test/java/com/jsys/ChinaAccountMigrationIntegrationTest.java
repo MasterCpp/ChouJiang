@@ -21,7 +21,55 @@ public final class ChinaAccountMigrationIntegrationTest {
 
     public static void main(String[] args) throws Exception {
         chinaMigrationKeepsOwnerAndPublicActivityAvailable();
+        branchAccountsAreIsolated();
         englishInstanceKeepsLegacyAuthenticationAndTsvStorage();
+    }
+
+    private static void branchAccountsAreIsolated() throws Exception {
+        Path workDir = Files.createTempDirectory("jsys-account-isolation-");
+        Process process = null;
+        try {
+            writeLegacyFixture(workDir.resolve("data"));
+            int port = availablePort();
+            process = startChineseInstance(workDir, port);
+            waitForHealth(port);
+            HttpClient client = HttpClient.newHttpClient();
+
+            HttpResponse<String> first = post(client, port, "/api/admin/register", registration("US Team", "owner.us@example.com", "OwnerPass123"));
+            assertEquals(201, first.statusCode(), "A Branch Account can self-register");
+            String firstSession = first.headers().firstValue("set-cookie").orElseThrow(() -> new AssertionError("Missing first account session"));
+            HttpResponse<String> second = post(client, port, "/api/admin/register", registration("Canada Team", "owner.ca@example.com", "OwnerPass123"));
+            assertEquals(201, second.statusCode(), "A second Branch Account can self-register");
+            String secondSession = second.headers().firstValue("set-cookie").orElseThrow(() -> new AssertionError("Missing second account session"));
+            assertEquals(400, post(client, port, "/api/admin/register", registration("Duplicate Team", "owner.us@example.com", "OwnerPass123")).statusCode(),
+                    "The exact same email can only register one Branch Account");
+            assertEquals(201, post(client, port, "/api/admin/register", registration("Case-sensitive Team", "Owner.US@example.com", "OwnerPass123")).statusCode(),
+                    "Email uniqueness preserves the agreed case-sensitive rule");
+
+            HttpResponse<String> created = postWithCookie(client, port, "/api/admin/events", firstSession, eventForm("US-only event"));
+            assertEquals(201, created.statusCode(), "First account can create an event in its workspace");
+            String eventId = jsonString(created.body(), "id");
+
+            HttpResponse<String> secondList = get(client, port, "/api/admin/events", secondSession);
+            assertEquals(200, secondList.statusCode(), "Second account can load its own empty workspace");
+            if (secondList.body().contains(eventId)) throw new AssertionError("Second account can see first account event");
+            HttpResponse<String> forbiddenRead = get(client, port, "/api/admin/events/" + eventId, secondSession);
+            assertEquals(404, forbiddenRead.statusCode(), "Second account cannot read a guessed event ID");
+
+            HttpResponse<String> settings = get(client, port, "/api/admin/settings", firstSession);
+            assertEquals(200, settings.statusCode(), "Owner can read account settings");
+            assertContains(settings.body(), "owner.us@example.com", "Owner settings retain the immutable email");
+            HttpResponse<String> changed = postWithCookie(client, port, "/api/admin/settings", firstSession,
+                    form("workspaceName", "US Team Updated", "currentPassword", "OwnerPass123", "newPassword", "NewOwnerPass123"));
+            assertEquals(200, changed.statusCode(), "Owner can update workspace name and password");
+            assertContains(changed.body(), "US Team Updated", "Settings response contains the trimmed workspace name");
+            assertEquals(401, get(client, port, "/api/admin/me", firstSession).statusCode(), "Changing password revokes the prior session");
+            assertEquals(401, post(client, port, "/api/admin/login", "email=owner.us%40example.com&password=OwnerPass123").statusCode(), "Old Owner password no longer works");
+            assertEquals(200, post(client, port, "/api/admin/login", "email=owner.us%40example.com&password=NewOwnerPass123").statusCode(), "New Owner password works");
+        } finally {
+            if (process != null) { process.destroyForcibly(); process.waitFor(); }
+            deleteTree(workDir);
+        }
     }
 
     private static void chinaMigrationKeepsOwnerAndPublicActivityAvailable() throws Exception {
@@ -173,6 +221,41 @@ public final class ChinaAccountMigrationIntegrationTest {
                 .header("Cookie", cookie.split(";", 2)[0])
                 .POST(HttpRequest.BodyPublishers.noBody())
                 .build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private static HttpResponse<String> postWithCookie(HttpClient client, int port, String path, String cookie, String body) throws IOException, InterruptedException {
+        return client.send(HttpRequest.newBuilder(uri(port, path)).timeout(Duration.ofSeconds(2))
+                .header("Cookie", cookie.split(";", 2)[0]).header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private static String registration(String workspaceName, String email, String password) {
+        return form("workspaceName", workspaceName, "email", email, "password", password);
+    }
+
+    private static String eventForm(String title) {
+        return form("title", title, "satisfactionQuestion", "Rate the event", "topicQuestion", "Topic", "topicOptions", "A\nB",
+                "freeTextQuestion", "Future topic", "privacyNotice", "Privacy", "winningCount", "1", "status", "active");
+    }
+
+    private static String form(String... values) {
+        StringBuilder builder = new StringBuilder();
+        for (int index = 0; index < values.length; index += 2) {
+            if (!builder.isEmpty()) builder.append('&');
+            builder.append(URLEncoder.encode(values[index], StandardCharsets.UTF_8));
+            builder.append('=').append(URLEncoder.encode(values[index + 1], StandardCharsets.UTF_8));
+        }
+        return builder.toString();
+    }
+
+    private static String jsonString(String body, String key) {
+        String prefix = "\"" + key + "\":\"";
+        int start = body.indexOf(prefix);
+        if (start < 0) throw new AssertionError("Missing JSON key: " + key);
+        int valueStart = start + prefix.length();
+        int end = body.indexOf('"', valueStart);
+        if (end < 0) throw new AssertionError("Unterminated JSON key: " + key);
+        return body.substring(valueStart, end);
     }
 
     private static URI uri(int port, String path) {

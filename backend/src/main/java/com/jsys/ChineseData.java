@@ -126,7 +126,7 @@ final class ChineseData {
                     insert.executeUpdate();
                 }
                 audit(connection, result.getString("account_id"), result.getString("email"), "login", result.getString("id"), "success");
-                return Optional.of(new OwnerSession(token, result.getString("account_id"), result.getString("email")));
+                return Optional.of(new OwnerSession(token, result.getString("id"), result.getString("account_id"), result.getString("email")));
             }
         } catch (SQLException error) {
             throw new IOException("Unable to sign in China Account Owner", error);
@@ -137,7 +137,7 @@ final class ChineseData {
         if (token == null || token.isBlank()) {
             return Optional.empty();
         }
-        String query = "SELECT s.token, i.account_id, i.email, a.status, s.expires_at, s.revoked_at "
+        String query = "SELECT s.token, i.id AS identity_id, i.account_id, i.email, a.status, s.expires_at, s.revoked_at "
                 + "FROM sessions s JOIN identities i ON i.id = s.identity_id "
                 + "JOIN branch_accounts a ON a.id = i.account_id "
                 + "WHERE s.token = ? AND i.role = 'owner'";
@@ -148,7 +148,7 @@ final class ChineseData {
                         || !Instant.parse(result.getString("expires_at")).isAfter(Instant.now())) {
                     return Optional.empty();
                 }
-                return Optional.of(new OwnerSession(result.getString("token"), result.getString("account_id"), result.getString("email")));
+                return Optional.of(new OwnerSession(result.getString("token"), result.getString("identity_id"), result.getString("account_id"), result.getString("email")));
             }
         } catch (SQLException error) {
             throw new IOException("Unable to validate China Account Owner session", error);
@@ -167,6 +167,75 @@ final class ChineseData {
         } catch (SQLException error) {
             throw new IOException("Unable to sign out China Account Owner", error);
         }
+    }
+
+    synchronized OwnerSettings settings(OwnerSession owner) throws IOException {
+        try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(
+                "SELECT workspace_name FROM branch_accounts WHERE id = ?")) {
+            statement.setString(1, owner.accountId());
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) throw new IOException("Branch Account not found");
+                return new OwnerSettings(result.getString("workspace_name"), owner.email());
+            }
+        } catch (SQLException error) { throw new IOException("Unable to load Owner settings", error); }
+    }
+
+    synchronized OwnerSettings updateSettings(OwnerSession owner, String workspaceName, String currentPassword, String newPassword) throws RegistrationException, IOException {
+        String name = workspaceName == null ? "" : workspaceName.trim();
+        if (name.isEmpty() || name.length() > 100) throw new RegistrationException("Workspace name must contain 1 to 100 characters");
+        if (newPassword == null || newPassword.length() < 8 || newPassword.length() > 128) throw new RegistrationException("Password must contain 8 to 128 characters");
+        try (Connection connection = open()) {
+            connection.setAutoCommit(false);
+            try (PreparedStatement identity = connection.prepareStatement("SELECT password_hash FROM identities WHERE id = ?")) {
+                identity.setString(1, owner.identityId());
+                try (ResultSet result = identity.executeQuery()) {
+                    if (!result.next() || !passwordMatches(currentPassword == null ? "" : currentPassword, result.getString("password_hash"))) {
+                        throw new RegistrationException("Current password is incorrect");
+                    }
+                }
+            }
+            try (PreparedStatement account = connection.prepareStatement("UPDATE branch_accounts SET workspace_name = ? WHERE id = ?");
+                 PreparedStatement identity = connection.prepareStatement("UPDATE identities SET password_hash = ? WHERE id = ?");
+                 PreparedStatement sessions = connection.prepareStatement("UPDATE sessions SET revoked_at = ? WHERE identity_id = ? AND revoked_at IS NULL")) {
+                account.setString(1, name); account.setString(2, owner.accountId()); account.executeUpdate();
+                identity.setString(1, passwordHash(newPassword)); identity.setString(2, owner.identityId()); identity.executeUpdate();
+                sessions.setString(1, Instant.now().toString()); sessions.setString(2, owner.identityId()); sessions.executeUpdate();
+            }
+            audit(connection, owner.accountId(), owner.email(), "update_settings", owner.accountId(), "success");
+            connection.commit();
+            return new OwnerSettings(name, owner.email());
+        } catch (SQLException error) { throw new IOException("Unable to update Owner settings", error); }
+    }
+
+    synchronized OwnerSession registerOwner(String workspaceName, String email, String password) throws RegistrationException, IOException {
+        String name = workspaceName == null ? "" : workspaceName.trim();
+        if (name.isEmpty() || name.length() > 100) throw new RegistrationException("Workspace name must contain 1 to 100 characters");
+        if (!validEmail(email)) throw new RegistrationException("A valid email address is required");
+        if (password == null || password.length() < 8 || password.length() > 128) throw new RegistrationException("Password must contain 8 to 128 characters");
+        try (Connection connection = open()) {
+            connection.setAutoCommit(false);
+            try {
+                String accountId = UUID.randomUUID().toString();
+                String identityId = UUID.randomUUID().toString();
+                String now = Instant.now().toString();
+                try (PreparedStatement account = connection.prepareStatement("INSERT INTO branch_accounts(id, workspace_name, status, created_at) VALUES (?, ?, 'active', ?)");
+                     PreparedStatement identity = connection.prepareStatement("INSERT INTO identities(id, account_id, role, email, password_hash, created_at) VALUES (?, ?, 'owner', ?, ?, ?)")) {
+                    account.setString(1, accountId); account.setString(2, name); account.setString(3, now); account.executeUpdate();
+                    identity.setString(1, identityId); identity.setString(2, accountId); identity.setString(3, email); identity.setString(4, passwordHash(password)); identity.setString(5, now); identity.executeUpdate();
+                }
+                String token = UUID.randomUUID().toString();
+                try (PreparedStatement session = connection.prepareStatement("INSERT INTO sessions(token, identity_id, expires_at, revoked_at) VALUES (?, ?, ?, NULL)")) {
+                    session.setString(1, token); session.setString(2, identityId); session.setString(3, Instant.now().plus(7, ChronoUnit.DAYS).toString()); session.executeUpdate();
+                }
+                audit(connection, accountId, email, "register", accountId, "success");
+                connection.commit();
+                return new OwnerSession(token, identityId, accountId, email);
+            } catch (SQLException error) {
+                connection.rollback();
+                if (error.getMessage() != null && error.getMessage().contains("UNIQUE")) throw new RegistrationException("Email is already registered");
+                throw error;
+            }
+        } catch (SQLException error) { throw new IOException("Unable to register Branch Account", error); }
     }
 
     synchronized List<App.Event> listEvents(String accountId) throws IOException {
@@ -356,8 +425,8 @@ final class ChineseData {
 
     private <T> List<T> readRecords(String table, String accountId, Parser<T> parser) throws IOException {
         try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(
-                "SELECT payload FROM " + table + " WHERE account_id = ? ORDER BY rowid")) {
-            statement.setString(1, accountId);
+                accountId == null ? "SELECT payload FROM " + table + " ORDER BY rowid" : "SELECT payload FROM " + table + " WHERE account_id = ? ORDER BY rowid")) {
+            if (accountId != null) statement.setString(1, accountId);
             try (ResultSet result = statement.executeQuery()) {
                 List<T> values = new ArrayList<>();
                 while (result.next()) {
@@ -424,8 +493,13 @@ final class ChineseData {
     record ChinaAccount(String accountId, String email) {
     }
 
-    record OwnerSession(String token, String accountId, String email) {
+    record OwnerSession(String token, String identityId, String accountId, String email) {
     }
+
+    record OwnerSettings(String workspaceName, String email) {
+    }
+
+    static final class RegistrationException extends Exception { RegistrationException(String message) { super(message); } }
 
     @FunctionalInterface
     private interface Id<T> {
@@ -440,5 +514,11 @@ final class ChineseData {
     @FunctionalInterface
     private interface Parser<T> {
         T parse(String value);
+    }
+
+    private static boolean validEmail(String value) {
+        if (value == null || value.isBlank() || !value.equals(value.trim()) || value.contains(" ")) return false;
+        int at = value.indexOf('@'); int dot = value.lastIndexOf('.');
+        return at > 0 && dot > at + 1 && dot < value.length() - 1;
     }
 }

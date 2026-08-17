@@ -1,6 +1,7 @@
 # Build output
 backend/out/
 backend/target/
+backend/test-out/
 
 # Runtime data
 data/*

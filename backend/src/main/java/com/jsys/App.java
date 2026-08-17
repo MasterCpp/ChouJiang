@@ -40,6 +40,15 @@ public final class App {
     }
 
     public static void main(String[] args) throws IOException {
+        if ("en".equalsIgnoreCase(System.getenv("JSYS_LOCALE"))) {
+            startLegacyInstance(args);
+            return;
+        }
+
+        startChineseInstance(args);
+    }
+
+    private static void startLegacyInstance(String[] args) throws IOException {
         int port = resolvePort(args);
         Path webRoot = Path.of("frontend", "public").toAbsolutePath().normalize();
         EventStore eventStore = new EventStore(Path.of("data", "events.tsv"));
@@ -67,6 +76,45 @@ public final class App {
         }, "jsys-shutdown"));
 
         System.out.println("J_Sys dev server started");
+        System.out.println("App:    http://127.0.0.1:" + port + "/");
+        System.out.println("Health: http://127.0.0.1:" + port + "/api/health");
+    }
+
+    private static void startChineseInstance(String[] args) throws IOException {
+        int port = resolvePort(args);
+        Path webRoot = Path.of("frontend", "public").toAbsolutePath().normalize();
+        Path dataDirectory = Path.of("data");
+        ChineseData data = new ChineseData(dataDirectory.resolve("jsys.db"));
+        ChineseData.ChinaAccount chinaAccount = data.bootstrapChinaAccount(
+                dataDirectory,
+                System.getenv("CHINA_ACCOUNT_EMAIL"),
+                System.getenv("CHINA_ACCOUNT_PASSWORD")
+        );
+        EventStore eventStore = new EventStore(data, chinaAccount.accountId());
+        SubmissionStore submissionStore = new SubmissionStore(data, chinaAccount.accountId());
+        WinnerStore winnerStore = new WinnerStore(data, chinaAccount.accountId());
+        OperationStore operationStore = new OperationStore(data, chinaAccount.accountId());
+
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
+        server.createContext("/api/health", exchange -> safe(exchange, () -> handleHealth(exchange)));
+        server.createContext("/api/config", exchange -> safe(exchange, () -> handlePublicConfig(exchange)));
+        server.createContext("/api/admin/login", exchange -> safe(exchange, () -> handleChineseLogin(exchange, data)));
+        server.createContext("/api/admin/logout", exchange -> safe(exchange, () -> handleChineseLogout(exchange, data)));
+        server.createContext("/api/admin/me", exchange -> safe(exchange, () -> handleChineseMe(exchange, data)));
+        server.createContext("/api/admin/events", exchange -> safe(exchange, () -> requireChineseOwner(exchange, data,
+                () -> handleEvents(exchange, eventStore, submissionStore, winnerStore, operationStore))));
+        server.createContext("/api/events", exchange -> safe(exchange, () -> handlePublicEvents(exchange, eventStore, submissionStore, winnerStore)));
+        server.createContext("/", exchange -> safe(exchange, () -> serveStatic(exchange, webRoot)));
+        ExecutorService requestExecutor = createRequestExecutor();
+        server.setExecutor(requestExecutor);
+        server.start();
+
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            server.stop(0);
+            requestExecutor.shutdown();
+        }, "jsys-chinese-shutdown"));
+
+        System.out.println("J_Sys Chinese instance started");
         System.out.println("App:    http://127.0.0.1:" + port + "/");
         System.out.println("Health: http://127.0.0.1:" + port + "/api/health");
     }
@@ -129,6 +177,23 @@ public final class App {
         send(exchange, 200, "application/json", "{\"ok\":true,\"username\":\"" + json(adminAuth.username()) + "\"}");
     }
 
+    private static void handleChineseLogin(HttpExchange exchange, ChineseData data) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            send(exchange, 405, "application/json", "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+        Map<String, String> form = readForm(exchange);
+        String email = form.containsKey("email") ? form.get("email") : form.get("username");
+        Optional<ChineseData.OwnerSession> session = data.loginOwner(email, form.get("password"));
+        if (session.isEmpty()) {
+            send(exchange, 401, "application/json", "{\"error\":\"Invalid email or password\"}");
+            return;
+        }
+        ChineseData.OwnerSession owner = session.get();
+        exchange.getResponseHeaders().add("Set-Cookie", "jsys_session=" + owner.token() + "; Path=/; HttpOnly; SameSite=Lax");
+        send(exchange, 200, "application/json", "{\"ok\":true,\"username\":\"" + json(owner.email()) + "\"}");
+    }
+
     private static void handleLogout(HttpExchange exchange) throws IOException {
         if (!"POST".equals(exchange.getRequestMethod())) {
             send(exchange, 405, "application/json", "{\"error\":\"Method not allowed\"}");
@@ -140,12 +205,42 @@ public final class App {
         send(exchange, 200, "application/json", "{\"ok\":true}");
     }
 
+    private static void handleChineseLogout(HttpExchange exchange, ChineseData data) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            send(exchange, 405, "application/json", "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+        readSession(exchange).ifPresent(token -> {
+            try {
+                data.logout(token);
+            } catch (IOException error) {
+                throw new RuntimeException(error);
+            }
+        });
+        exchange.getResponseHeaders().add("Set-Cookie", "jsys_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax");
+        send(exchange, 200, "application/json", "{\"ok\":true}");
+    }
+
     private static void handleMe(HttpExchange exchange) throws IOException {
         if (!"GET".equals(exchange.getRequestMethod())) {
             send(exchange, 405, "application/json", "{\"error\":\"Method not allowed\"}");
             return;
         }
         send(exchange, 200, "application/json", "{\"username\":\"" + json(new AdminAuth().username()) + "\"}");
+    }
+
+    private static void handleChineseMe(HttpExchange exchange, ChineseData data) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            send(exchange, 405, "application/json", "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+        Optional<String> token = readSession(exchange);
+        Optional<ChineseData.OwnerSession> owner = token.isEmpty() ? Optional.empty() : data.ownerForSession(token.get());
+        if (owner.isEmpty()) {
+            send(exchange, 401, "application/json", "{\"error\":\"Authentication required\"}");
+            return;
+        }
+        send(exchange, 200, "application/json", "{\"username\":\"" + json(owner.get().email()) + "\"}");
     }
 
     private static void handleEvents(
@@ -752,6 +847,15 @@ public final class App {
         handler.handle();
     }
 
+    private static void requireChineseOwner(HttpExchange exchange, ChineseData data, Handler handler) throws IOException {
+        Optional<String> token = readSession(exchange);
+        if (token.isEmpty() || data.ownerForSession(token.get()).isEmpty()) {
+            send(exchange, 401, "application/json", "{\"error\":\"Authentication required\"}");
+            return;
+        }
+        handler.handle();
+    }
+
     private static void safe(HttpExchange exchange, Handler handler) throws IOException {
         try {
             handler.handle();
@@ -1071,18 +1175,31 @@ public final class App {
         return value == null || value.isBlank() ? defaultValue : value;
     }
 
-    private static final class EventStore {
+    static final class EventStore {
         private final Path file;
+        private final ChineseData chineseData;
+        private final String accountId;
 
         EventStore(Path file) throws IOException {
             this.file = file;
+            this.chineseData = null;
+            this.accountId = null;
             Files.createDirectories(file.getParent());
             if (!Files.exists(file)) {
                 Files.createFile(file);
             }
         }
 
+        EventStore(ChineseData chineseData, String accountId) {
+            this.file = null;
+            this.chineseData = chineseData;
+            this.accountId = accountId;
+        }
+
         synchronized List<Event> list() throws IOException {
+            if (chineseData != null) {
+                return chineseData.listEvents(accountId);
+            }
             List<Event> events = new ArrayList<>();
             for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                 if (!line.isBlank()) {
@@ -1178,6 +1295,10 @@ public final class App {
         }
 
         private void write(List<Event> events) throws IOException {
+            if (chineseData != null) {
+                chineseData.replaceEvents(accountId, events);
+                return;
+            }
             List<String> lines = new ArrayList<>();
             for (Event event : events) {
                 lines.add(event.toLine());
@@ -1186,18 +1307,31 @@ public final class App {
         }
     }
 
-    private static final class SubmissionStore {
+    static final class SubmissionStore {
         private final Path file;
+        private final ChineseData chineseData;
+        private final String accountId;
 
         SubmissionStore(Path file) throws IOException {
             this.file = file;
+            this.chineseData = null;
+            this.accountId = null;
             Files.createDirectories(file.getParent());
             if (!Files.exists(file)) {
                 Files.createFile(file);
             }
         }
 
+        SubmissionStore(ChineseData chineseData, String accountId) {
+            this.file = null;
+            this.chineseData = chineseData;
+            this.accountId = accountId;
+        }
+
         synchronized List<Submission> list() throws IOException {
+            if (chineseData != null) {
+                return chineseData.listSubmissions(accountId);
+            }
             List<Submission> submissions = new ArrayList<>();
             for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                 if (!line.isBlank()) {
@@ -1267,6 +1401,10 @@ public final class App {
         }
 
         private void write(List<Submission> submissions) throws IOException {
+            if (chineseData != null) {
+                chineseData.replaceSubmissions(accountId, submissions);
+                return;
+            }
             List<String> lines = new ArrayList<>();
             for (Submission submission : submissions) {
                 lines.add(submission.toLine());
@@ -1275,18 +1413,31 @@ public final class App {
         }
     }
 
-    private static final class WinnerStore {
+    static final class WinnerStore {
         private final Path file;
+        private final ChineseData chineseData;
+        private final String accountId;
 
         WinnerStore(Path file) throws IOException {
             this.file = file;
+            this.chineseData = null;
+            this.accountId = null;
             Files.createDirectories(file.getParent());
             if (!Files.exists(file)) {
                 Files.createFile(file);
             }
         }
 
+        WinnerStore(ChineseData chineseData, String accountId) {
+            this.file = null;
+            this.chineseData = chineseData;
+            this.accountId = accountId;
+        }
+
         synchronized List<Winner> list() throws IOException {
+            if (chineseData != null) {
+                return chineseData.listWinners(accountId);
+            }
             List<Winner> winners = new ArrayList<>();
             for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                 if (!line.isBlank()) {
@@ -1402,6 +1553,10 @@ public final class App {
         }
 
         private void write(List<Winner> winners) throws IOException {
+            if (chineseData != null) {
+                chineseData.replaceWinners(accountId, winners);
+                return;
+            }
             List<String> lines = new ArrayList<>();
             for (Winner winner : winners) {
                 lines.add(winner.toLine());
@@ -1410,18 +1565,31 @@ public final class App {
         }
     }
 
-    private static final class OperationStore {
+    static final class OperationStore {
         private final Path file;
+        private final ChineseData chineseData;
+        private final String accountId;
 
         OperationStore(Path file) throws IOException {
             this.file = file;
+            this.chineseData = null;
+            this.accountId = null;
             Files.createDirectories(file.getParent());
             if (!Files.exists(file)) {
                 Files.createFile(file);
             }
         }
 
+        OperationStore(ChineseData chineseData, String accountId) {
+            this.file = null;
+            this.chineseData = chineseData;
+            this.accountId = accountId;
+        }
+
         synchronized List<Operation> list() throws IOException {
+            if (chineseData != null) {
+                return chineseData.listOperations(accountId);
+            }
             List<Operation> operations = new ArrayList<>();
             for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                 if (!line.isBlank()) {
@@ -1467,6 +1635,10 @@ public final class App {
         }
 
         private void write(List<Operation> operations) throws IOException {
+            if (chineseData != null) {
+                chineseData.replaceOperations(accountId, operations);
+                return;
+            }
             List<String> lines = new ArrayList<>();
             for (Operation operation : operations) {
                 lines.add(operation.toLine());
@@ -1813,7 +1985,7 @@ public final class App {
         }
     }
 
-    private static final class Event {
+    static final class Event {
         final String id;
         final String title;
         final String satisfactionQuestion;
@@ -1948,7 +2120,7 @@ public final class App {
         }
     }
 
-    private static final class Submission {
+    static final class Submission {
         final String id;
         final String eventId;
         final String name;
@@ -2047,7 +2219,7 @@ public final class App {
         }
     }
 
-    private static final class Winner {
+    static final class Winner {
         final String id;
         final String eventId;
         final String submissionId;
@@ -2134,7 +2306,7 @@ public final class App {
         }
     }
 
-    private static final class Operation {
+    static final class Operation {
         final String id;
         final String eventId;
         final String action;

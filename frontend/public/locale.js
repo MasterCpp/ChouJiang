@@ -28,15 +28,15 @@
     if (bilingualEnglish.length) return [...new Set(bilingualEnglish)].join(" / ");
     let text = value;
     for (const [source, target] of replacements) text = text.split(source).join(target);
-    return text.replace(/[\u3400-\u9fff]+/g, "").replace(/[、。]+/g, "").replace(/\s{2,}/g, " ").trim();
+    return text.replace(/\s{2,}/g, " ").trim();
   }
 
-  function isUserContent(node) {
-    return node.parentElement && node.parentElement.closest("[data-user-content]");
+  function isTranslationExcluded(node) {
+    return node.parentElement && node.parentElement.closest("[data-user-content], [data-locale-control]");
   }
 
   function translateTextNode(node) {
-    if (isUserContent(node) || !han.test(node.nodeValue)) return;
+    if (isTranslationExcluded(node) || !han.test(node.nodeValue)) return;
     if (!originalText.has(node)) originalText.set(node, node.nodeValue);
     node.nodeValue = englishText(originalText.get(node));
   }
@@ -53,7 +53,7 @@
     while (walker.nextNode()) nodes.push(walker.currentNode);
     nodes.forEach(translateTextNode);
     root.querySelectorAll?.("[alt], [title], [placeholder]").forEach(element => {
-      if (element.closest("[data-user-content]")) return;
+      if (element.closest("[data-user-content], [data-locale-control]")) return;
       ["alt", "title", "placeholder"].forEach(attribute => {
         if (!element.hasAttribute(attribute)) return;
         if (!originalAttributes.has(element)) originalAttributes.set(element, new Map());
@@ -87,11 +87,13 @@
       toggle.id = "languageToggle";
       toggle.type = "button";
       toggle.className = "language-switch";
+      toggle.setAttribute("data-locale-control", "true");
       toggle.addEventListener("click", () => setLanguage(english ? "zh" : "en"));
       document.body.append(toggle);
     }
-    toggle.textContent = english ? "中文" : "English";
-    toggle.setAttribute("aria-label", english ? "切换为中文" : "Switch to English");
+    toggle.textContent = "中文 / English";
+    toggle.setAttribute("aria-label", english ? "Switch to Chinese" : "切换为 English");
+    toggle.setAttribute("aria-pressed", String(english));
   }
 
   function setLanguage(next) {

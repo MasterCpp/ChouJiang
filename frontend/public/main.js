@@ -1331,7 +1331,7 @@ async function bootAdmin() {
 async function boot() {
   await window.JSysLocale.load();
   configureAccountMode();
-  if (window.JSysLocale.isEnglishInstance()) {
+  if (window.JSysLocale.isEnglish()) {
     defaults = Object.fromEntries(Object.entries(defaults).map(([key, value]) => [
       key,
       typeof value === "string" ? value.split("\n").map(window.JSysLocale.toEnglish).join("\n") : value

@@ -28,6 +28,13 @@ fi
 
 install -d -m 0750 /etc/jsys
 install -d -m 0755 /usr/local/lib/jsys
+
+if [[ ! -f /etc/jsys/jsys.env ]]; then
+  echo "Missing /etc/jsys/jsys.env. Create it from scripts/linux/jsys.env.example, set its four credentials, and run this installer again." >&2
+  exit 1
+fi
+
+chmod 0600 /etc/jsys/jsys.env
 install -m 0644 "$app_dir/scripts/linux/jsys.service" "$unit_dir/jsys.service"
 install -m 0644 "$app_dir/scripts/linux/jsys-healthcheck.service" "$unit_dir/jsys-healthcheck.service"
 install -m 0644 "$app_dir/scripts/linux/jsys-healthcheck.timer" "$unit_dir/jsys-healthcheck.timer"

@@ -55,25 +55,23 @@ Firewall rule allowing HTTP/HTTPS or the chosen app port
 ## Basic Deployment Shape
 
 1. Copy the project folder to the server.
-2. Run:
+2. For the Chinese multi-account instance, create the protected first-start environment file before installing or restarting the service:
 
-```text
-scripts\build.cmd
+```bash
+sudo install -d -m 0750 /etc/jsys
+sudo cp /opt/jsys/scripts/linux/jsys.env.example /etc/jsys/jsys.env
+sudo chmod 0600 /etc/jsys/jsys.env
+sudoedit /etc/jsys/jsys.env
 ```
 
-On Linux, use the equivalent Java compile command:
-
-```text
-mkdir -p backend/out
-javac -encoding UTF-8 -d backend/out backend/src/main/java/com/jsys/App.java
-```
+Set the four values in that file: `CHINA_ACCOUNT_EMAIL`, `CHINA_ACCOUNT_PASSWORD`, `PLATFORM_ADMIN_EMAIL`, and `PLATFORM_ADMIN_PASSWORD`. Do not use the legacy `ADMIN_USERNAME` value for the migrated China Account.
 
 3. Build the app and install the service guard (recommended for every formal deployment):
 
 ```text
 cd /opt/jsys
 mkdir -p backend/out
-javac -encoding UTF-8 -d backend/out backend/src/main/java/com/jsys/App.java
+javac -encoding UTF-8 -cp lib/sqlite-jdbc-3.53.2.0.jar -d backend/out backend/src/main/java/com/jsys/*.java
 sudo bash scripts/linux/install-systemd.sh
 ```
 
@@ -83,10 +81,11 @@ The installer enables all of the following:
 - `jsys-healthcheck.timer`: calls `http://127.0.0.1:8080/api/health` every minute. A timeout, connection failure, or non-OK result restarts `jsys.service`.
 - Journal records: check `journalctl -u jsys -u jsys-healthcheck -f` while investigating an outage.
 
-4. Start the app manually only for a short-lived test:
+4. Start the app manually only for a short-lived test, with the protected environment already loaded:
 
 ```text
-java -cp backend/out com.jsys.App 8080
+set -a; . /etc/jsys/jsys.env; set +a
+java -cp backend/out:lib/sqlite-jdbc-3.53.2.0.jar com.jsys.App 8080
 ```
 
 5. Open:
@@ -184,13 +183,14 @@ For initial testing, open `http://server-ip:8081/`. Long-term, use a separate En
 Runtime data files:
 
 ```text
-data/events.tsv
-data/submissions.tsv
-data/winners.tsv
-data/operations.tsv
+data/jsys.db                 (Chinese multi-account runtime after migration)
+data/events.tsv              (legacy migration input and backup)
+data/submissions.tsv         (legacy migration input and backup)
+data/winners.tsv             (legacy migration input and backup)
+data/operations.tsv          (legacy migration input and backup)
 ```
 
-Back up the `data/` folder regularly. For formal long-term use, copy it before upgrades and after each event.
+Back up the whole `data/` folder regularly. For formal long-term use, copy it before upgrades and after each event. After migration, `jsys.db` is the Chinese runtime source of truth; preserve the legacy TSV backup until migration acceptance is complete.
 
 Suggested simple backup:
 

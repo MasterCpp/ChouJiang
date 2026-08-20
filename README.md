@@ -4,7 +4,7 @@ J_Sys is a multi-event H5 lucky draw system for small online or hybrid meetings.
 
 ## Current Status
 
-The project has a runnable local/demo implementation and formal two-instance deployment support. It includes dynamic per-event registration forms, systemd recovery guards, an isolated English instance, bounded concurrent request handling, and English administrator time/action-label fixes.
+The project has a runnable local/demo implementation and formal two-instance deployment support. The Chinese instance includes self-registered Branch Accounts, isolated workspaces, a separate Platform Administrator entry, SQLite migration, browser-local Chinese/English switching, and bounded concurrent request handling. The English instance remains isolated.
 
 Read first:
 
@@ -92,7 +92,15 @@ scripts\build.cmd
 
 ### Test
 
-There is no automated test suite yet. For the scaffold baseline, verify:
+Run the automated multi-account regression suite:
+
+```text
+scripts\test.cmd
+```
+
+It covers China-account migration, registration, cross-account isolation, Platform Administrator lifecycle controls, public-route disablement, English-instance separation, and 100 concurrent Chinese-instance reads plus registrations.
+
+For an additional manual smoke test, verify:
 
 - `scripts\build.cmd` succeeds.
 - `scripts\start-dev.cmd` starts the local server.
@@ -124,15 +132,13 @@ Local runtime data is stored under:
 data/
 ```
 
-Current event configuration data is stored in `data/events.tsv`.
-Current registration data is stored in `data/submissions.tsv`.
-Current winner data is stored in `data/winners.tsv`.
-Current operation records are stored in `data/operations.tsv`.
+The Chinese multi-account runtime stores its data in `data/jsys.db` after its one-time TSV migration. The older TSV files remain migration input and should be backed up before the first multi-account start.
 Runtime data is ignored by git.
 
 ## URL Map
 
 - Admin: `http://127.0.0.1:8080/`
+- Platform Administrator (unlinked internal entry): `http://127.0.0.1:8080/platform`
 - Registration: `http://127.0.0.1:8080/join/{eventId}`
 - Public result page: `http://127.0.0.1:8080/results/{eventId}`
 - Big screen: `http://127.0.0.1:8080/screen/{eventId}`
@@ -158,6 +164,7 @@ Detailed guides:
 
 - `docs/demo.md`: local demo, recording sequence, temporary customer scan test.
 - `docs/deployment.md`: server baseline, public IP/domain notes, deployment checklist, backup notes.
+- `docs/operations-chinese-multi-account.md`: Chinese multi-account migration, acceptance, and rollback checklist.
 
 ### English Isolated Instance
 

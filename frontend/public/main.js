@@ -210,32 +210,47 @@ function defaultQuestions(source = defaults) {
   ];
 }
 
-function sameQuestions(left, right) {
-  return left.length === right.length && left.every((question, index) => {
-    const other = right[index];
-    return question.id === other.id
-      && question.type === other.type
-      && question.label === other.label
-      && question.required === other.required
-      && (question.options || []).join("\n") === (other.options || []).join("\n");
-  });
+function sameOptions(left = [], right = []) {
+  return left.join("\n") === right.join("\n");
 }
 
-function hasUntouchedDefaultDraft(source) {
-  return !eventForm.elements.id.value
-    && eventForm.elements.title.value === source.title
-    && sameQuestions(currentQuestions, defaultQuestions(source));
+function updateUntouchedDefaultDraft(previousDefaults) {
+  if (eventForm.elements.id.value) return;
+
+  ["title", "privacyNotice", "winningCount", "status"].forEach(key => {
+    if (eventForm.elements[key].value === previousDefaults[key]) {
+      eventForm.elements[key].value = defaults[key];
+    }
+  });
+
+  const previousQuestions = new Map(defaultQuestions(previousDefaults).map(question => [question.id, question]));
+  const localizedQuestions = new Map(defaultQuestions().map(question => [question.id, question]));
+  let changed = false;
+  currentQuestions.forEach(question => {
+    const previousQuestion = previousQuestions.get(question.id);
+    const localizedQuestion = localizedQuestions.get(question.id);
+    if (!previousQuestion || !localizedQuestion) return;
+    if (question.label === previousQuestion.label) {
+      question.label = localizedQuestion.label;
+      changed = true;
+    }
+    if (sameOptions(question.options, previousQuestion.options)) {
+      question.options = [...localizedQuestion.options];
+      changed = true;
+    }
+  });
+
+  if (changed) renderQuestionBuilder();
 }
 
 function updateDefaultsForCurrentLanguage() {
   const previousDefaults = defaults;
-  const resetDraft = hasUntouchedDefaultDraft(previousDefaults);
   const translateDefault = window.JSysLocale.isEnglish() ? window.JSysLocale.toEnglish : window.JSysLocale.toChinese;
   defaults = Object.fromEntries(Object.entries(defaultTemplate).map(([key, value]) => [
     key,
     typeof value === "string" ? value.split("\n").map(translateDefault).join("\n") : value
   ]));
-  if (resetDraft) fillDefaults();
+  updateUntouchedDefaultDraft(previousDefaults);
 }
 
 function localizedStatus(status, useEnglish = window.JSysLocale.isEnglish()) {

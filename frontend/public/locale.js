@@ -39,7 +39,7 @@
   }
 
   function isTranslationExcluded(node) {
-    return node.parentElement && node.parentElement.closest("[data-user-content], [data-locale-control]");
+    return node.parentElement && node.parentElement.closest("[data-user-content], [data-locale-control], input, textarea, select, option");
   }
 
   function translateTextNode(node) {
@@ -61,7 +61,7 @@
     while (walker.nextNode()) nodes.push(walker.currentNode);
     nodes.forEach(translateTextNode);
     root.querySelectorAll?.("[alt], [title], [placeholder]").forEach(element => {
-      if (element.closest("[data-user-content], [data-locale-control]")) return;
+      if (element.closest("[data-user-content], [data-locale-control], input, textarea, select, option")) return;
       ["alt", "title", "placeholder"].forEach(attribute => {
         if (!element.hasAttribute(attribute)) return;
         if (!originalAttributes.has(element)) originalAttributes.set(element, new Map());

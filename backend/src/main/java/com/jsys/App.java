@@ -98,7 +98,7 @@ public final class App {
         SubmissionStore publicSubmissionStore = new SubmissionStore(data, null);
         WinnerStore publicWinnerStore = new WinnerStore(data, null);
 
-        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), HTTP_QUEUE_CAPACITY);
+        HttpServer server = HttpServer.create(new InetSocketAddress("0.0.0.0", port), HTTP_QUEUE_CAPACITY);
         server.createContext("/api/health", exchange -> safe(exchange, () -> handleHealth(exchange)));
         server.createContext("/api/config", exchange -> safe(exchange, () -> handlePublicConfig(exchange)));
         server.createContext("/api/admin/login", exchange -> safe(exchange, () -> handleChineseLogin(exchange, data)));
@@ -1479,6 +1479,7 @@ public final class App {
     }
 
     static final class SubmissionStore {
+        private static final Object CHINESE_MUTATION_LOCK = new Object();
         private final Path file;
         private final ChineseData chineseData;
         private final String accountId;
@@ -1526,7 +1527,18 @@ public final class App {
             return listByEvent(eventId).stream().filter(submission -> submission.id.equals(submissionId)).findFirst();
         }
 
-        synchronized Optional<Submission> createIfEmailAbsent(String eventId, SubmissionInput input) throws IOException {
+        Optional<Submission> createIfEmailAbsent(String eventId, SubmissionInput input) throws IOException {
+            if (chineseData != null) {
+                synchronized (CHINESE_MUTATION_LOCK) {
+                    return createIfEmailAbsentLocked(eventId, input);
+                }
+            }
+            synchronized (this) {
+                return createIfEmailAbsentLocked(eventId, input);
+            }
+        }
+
+        private Optional<Submission> createIfEmailAbsentLocked(String eventId, SubmissionInput input) throws IOException {
             String normalized = normalizeEmail(input.email);
             for (Submission submission : listByEvent(eventId)) {
                 if (normalizeEmail(submission.email).equals(normalized)) {
@@ -1551,7 +1563,19 @@ public final class App {
             return Optional.of(submission);
         }
 
-        synchronized void deleteByEvent(String eventId) throws IOException {
+        void deleteByEvent(String eventId) throws IOException {
+            if (chineseData != null) {
+                synchronized (CHINESE_MUTATION_LOCK) {
+                    deleteByEventLocked(eventId);
+                }
+                return;
+            }
+            synchronized (this) {
+                deleteByEventLocked(eventId);
+            }
+        }
+
+        private void deleteByEventLocked(String eventId) throws IOException {
             List<Submission> remaining = new ArrayList<>();
             for (Submission submission : list()) {
                 if (!submission.eventId.equals(eventId)) {
@@ -1561,7 +1585,19 @@ public final class App {
             write(remaining);
         }
 
-        synchronized void delete(String eventId, String submissionId) throws IOException {
+        void delete(String eventId, String submissionId) throws IOException {
+            if (chineseData != null) {
+                synchronized (CHINESE_MUTATION_LOCK) {
+                    deleteLocked(eventId, submissionId);
+                }
+                return;
+            }
+            synchronized (this) {
+                deleteLocked(eventId, submissionId);
+            }
+        }
+
+        private void deleteLocked(String eventId, String submissionId) throws IOException {
             List<Submission> remaining = new ArrayList<>();
             for (Submission submission : list()) {
                 if (!(submission.eventId.equals(eventId) && submission.id.equals(submissionId))) {

@@ -855,6 +855,14 @@ function renderJoinUnavailable(message) {
   `;
 }
 
+function registrationSubmittedMarkup(eventId) {
+  return `
+    <h2 data-locale-zh="报名成功" data-locale-en="Registration submitted">报名成功</h2>
+    <p data-locale-zh="您已加入本场活动抽奖名单，请关注会议大屏或查看中奖结果页。" data-locale-en="You are in the lucky draw pool. Please watch the meeting screen or check the winner page.">您已加入本场活动抽奖名单，请关注会议大屏或查看中奖结果页。</p>
+    <a class="button-link" href="/results/${eventId}" data-locale-zh="查看中奖结果" data-locale-en="View Winners">查看中奖结果</a>
+  `;
+}
+
 function renderJoinForm(event) {
   showPublic(joinView);
   sessionLabel.textContent = "报名页";
@@ -874,7 +882,7 @@ function renderJoinForm(event) {
       <label>
         ${escapeHtml(event.satisfactionQuestion)}
         <select name="satisfactionScore" required>
-          <option value="">请选择 / Select</option>
+          <option value="" data-locale-zh="请选择" data-locale-en="Select">请选择</option>
           ${Array.from({ length: 10 }, (_, index) => `<option value="${index + 1}">${index + 1}</option>`).join("")}
         </select>
       </label>
@@ -903,12 +911,7 @@ function renderJoinForm(event) {
         method: "POST",
         body: encodeForm(submitEvent.currentTarget)
       });
-      joinView.innerHTML = `
-        <h2>报名成功 / Registration submitted</h2>
-        <p>您已加入本场活动抽奖名单，请关注会议大屏或查看中奖结果页。</p>
-        <p>You are in the lucky draw pool. Please watch the meeting screen or check the winner page.</p>
-        <a class="button-link" href="/results/${event.id}">查看中奖结果 / View Winners</a>
-      `;
+      joinView.innerHTML = registrationSubmittedMarkup(event.id);
     } catch (error) {
       message.textContent = error.message;
     }
@@ -923,7 +926,7 @@ function renderDynamicQuestionInput(question) {
       <label>
         <span data-user-content>${escapeHtml(question.label)}</span>
         <select name="${escapeHtml(name)}" ${required}>
-          <option value="">请选择 / Select</option>
+          <option value="" data-locale-zh="请选择" data-locale-en="Select">请选择</option>
           ${Array.from({ length: 10 }, (_, index) => `<option value="${index + 1}">${index + 1}</option>`).join("")}
         </select>
       </label>
@@ -991,12 +994,7 @@ function renderJoinForm(event) {
         method: "POST",
         body: encodeForm(submitEvent.currentTarget)
       });
-      joinView.innerHTML = `
-        <h2>报名成功 / Registration submitted</h2>
-        <p>您已加入本场活动抽奖名单，请关注会议大屏或查看中奖结果页。</p>
-        <p>You are in the lucky draw pool. Please watch the meeting screen or check the winner page.</p>
-        <a class="button-link" href="/results/${event.id}">查看中奖结果 / View Winners</a>
-      `;
+      joinView.innerHTML = registrationSubmittedMarkup(event.id);
     } catch (error) {
       message.textContent = error.message;
     }

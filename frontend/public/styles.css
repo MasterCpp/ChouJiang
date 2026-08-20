@@ -685,6 +685,10 @@ td {
 }
 
 @media (max-width: 900px) {
+  .public-page .language-switch {
+    bottom: max(96px, calc(env(safe-area-inset-bottom, 0px) + 80px));
+  }
+
   .app-shell {
     width: min(100% - 24px, 720px);
   }

@@ -319,10 +319,10 @@ function renderQuestionBuilder() {
         <label>
           类型 / Type
           <select data-question-field="type">
-            <option value="single" ${question.type === "single" ? "selected" : ""}>单选 / Single choice</option>
-            <option value="multiple" ${question.type === "multiple" ? "selected" : ""}>多选 / Multiple choice</option>
-            <option value="text" ${question.type === "text" ? "selected" : ""}>问答 / Text</option>
-            <option value="score" ${question.type === "score" ? "selected" : ""}>评分 / Score 1-10</option>
+            <option value="single" data-locale-zh="单选" data-locale-en="Single choice" ${question.type === "single" ? "selected" : ""}>单选</option>
+            <option value="multiple" data-locale-zh="多选" data-locale-en="Multiple choice" ${question.type === "multiple" ? "selected" : ""}>多选</option>
+            <option value="text" data-locale-zh="问答" data-locale-en="Text" ${question.type === "text" ? "selected" : ""}>问答</option>
+            <option value="score" data-locale-zh="评分" data-locale-en="Score 1-10" ${question.type === "score" ? "selected" : ""}>评分</option>
           </select>
         </label>
         <label class="checkbox-line">

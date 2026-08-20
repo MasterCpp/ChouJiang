@@ -30,7 +30,7 @@ const topbarActions = document.querySelector(".topbar-actions");
 const questionList = document.querySelector("#questionList");
 const addQuestionButton = document.querySelector("#addQuestionButton");
 
-let defaults = {
+const defaultTemplate = {
   title: "",
   satisfactionQuestion: "您对今日主题分享的整体满意程度？ / Overall satisfaction with today's sharing?",
   topicQuestion: "您今天最满意哪方面的分享？ / Which topic are you most satisfied with today?",
@@ -50,6 +50,8 @@ let defaults = {
   winningCount: "1",
   status: "active"
 };
+
+let defaults = defaultTemplate;
 
 let currentQuestions = [];
 let chineseAccountMode = false;
@@ -182,30 +184,68 @@ function newQuestion(type = "text") {
   };
 }
 
-function defaultQuestions() {
+function defaultQuestions(source = defaults) {
   return [
     {
       id: "score",
       type: "score",
-      label: defaults.satisfactionQuestion,
+      label: source.satisfactionQuestion,
       required: true,
       options: []
     },
     {
       id: "topic",
       type: "single",
-      label: defaults.topicQuestion,
+      label: source.topicQuestion,
       required: true,
-      options: defaults.topicOptions.split("\n").filter(Boolean)
+      options: source.topicOptions.split("\n").filter(Boolean)
     },
     {
       id: "future",
       type: "text",
-      label: defaults.freeTextQuestion,
+      label: source.freeTextQuestion,
       required: true,
       options: []
     }
   ];
+}
+
+function sameQuestions(left, right) {
+  return left.length === right.length && left.every((question, index) => {
+    const other = right[index];
+    return question.id === other.id
+      && question.type === other.type
+      && question.label === other.label
+      && question.required === other.required
+      && (question.options || []).join("\n") === (other.options || []).join("\n");
+  });
+}
+
+function hasUntouchedDefaultDraft(source) {
+  return !eventForm.elements.id.value
+    && eventForm.elements.title.value === source.title
+    && sameQuestions(currentQuestions, defaultQuestions(source));
+}
+
+function updateDefaultsForCurrentLanguage() {
+  const previousDefaults = defaults;
+  const resetDraft = hasUntouchedDefaultDraft(previousDefaults);
+  const translateDefault = window.JSysLocale.isEnglish() ? window.JSysLocale.toEnglish : window.JSysLocale.toChinese;
+  defaults = Object.fromEntries(Object.entries(defaultTemplate).map(([key, value]) => [
+    key,
+    typeof value === "string" ? value.split("\n").map(translateDefault).join("\n") : value
+  ]));
+  if (resetDraft) fillDefaults();
+}
+
+function localizedStatus(status, useEnglish = window.JSysLocale.isEnglish()) {
+  const labels = {
+    active: ["进行中", "Active"],
+    draft: ["草稿", "Draft"],
+    closed: ["已结束", "Closed"]
+  };
+  const label = labels[status];
+  return label ? label[useEnglish ? 1 : 0] : status;
 }
 
 function b64UrlEncode(value) {
@@ -370,11 +410,13 @@ function renderEvents(events) {
     const resultLink = absoluteUrl(`/results/${event.id}`);
     const screenLink = absoluteUrl(`/screen/${event.id}`);
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=132x132&data=${encodeURIComponent(link)}`;
+    const statusChinese = localizedStatus(event.status, false);
+    const statusEnglish = localizedStatus(event.status, true);
     return `
       <article class="event-card">
         <div class="event-title-row">
           <h3 data-user-content>${escapeHtml(event.title || "Untitled Event")}</h3>
-          <span class="status-badge ${escapeHtml(event.status)}">${escapeHtml(event.status)}</span>
+          <span class="status-badge ${escapeHtml(event.status)}" data-locale-zh="${escapeHtml(statusChinese)}" data-locale-en="${escapeHtml(statusEnglish)}">${escapeHtml(localizedStatus(event.status))}</span>
         </div>
         <div class="event-body">
           <div class="event-meta">
@@ -1331,12 +1373,7 @@ async function bootAdmin() {
 async function boot() {
   await window.JSysLocale.load();
   configureAccountMode();
-  if (window.JSysLocale.isEnglish()) {
-    defaults = Object.fromEntries(Object.entries(defaults).map(([key, value]) => [
-      key,
-      typeof value === "string" ? value.split("\n").map(window.JSysLocale.toEnglish).join("\n") : value
-    ]));
-  }
+  updateDefaultsForCurrentLanguage();
   const joinMatch = window.location.pathname.match(/^\/join\/([^/]+)$/);
   const resultMatch = window.location.pathname.match(/^\/results\/([^/]+)$/);
   const screenMatch = window.location.pathname.match(/^\/screen\/([^/]+)$/);
@@ -1363,5 +1400,7 @@ async function boot() {
 
   await bootAdmin();
 }
+
+document.addEventListener("jsyslocalechange", updateDefaultsForCurrentLanguage);
 
 boot();

@@ -31,6 +31,13 @@
     return text.replace(/\s{2,}/g, " ").trim();
   }
 
+  function chineseText(value) {
+    if (!value || !/[A-Za-z]/.test(value)) return value;
+    const bilingualParts = value.split(/\s*\/\s*/).map(part => part.trim()).filter(Boolean);
+    const chineseParts = bilingualParts.filter(part => han.test(part));
+    return chineseParts.length ? [...new Set(chineseParts)].join(" / ") : value;
+  }
+
   function isTranslationExcluded(node) {
     return node.parentElement && node.parentElement.closest("[data-user-content], [data-locale-control]");
   }
@@ -42,8 +49,9 @@
   }
 
   function restoreTextNode(node) {
-    if (!originalText.has(node)) return;
-    node.nodeValue = originalText.get(node);
+    if (isTranslationExcluded(node)) return;
+    if (!originalText.has(node)) originalText.set(node, node.nodeValue);
+    node.nodeValue = chineseText(originalText.get(node));
   }
 
   function translate(root = document.body) {
@@ -62,6 +70,7 @@
         element.setAttribute(attribute, englishText(originals.get(attribute)));
       });
     });
+    renderExplicitLocale(root);
   }
 
   function restore(root = document.body) {
@@ -72,7 +81,14 @@
     nodes.forEach(restoreTextNode);
     root.querySelectorAll?.("[alt], [title], [placeholder]").forEach(element => {
       const originals = originalAttributes.get(element);
-      if (originals) originals.forEach((value, attribute) => element.setAttribute(attribute, value));
+      if (originals) originals.forEach((value, attribute) => element.setAttribute(attribute, chineseText(value)));
+    });
+    renderExplicitLocale(root);
+  }
+
+  function renderExplicitLocale(root) {
+    root.querySelectorAll?.("[data-locale-zh][data-locale-en]").forEach(element => {
+      element.textContent = english ? element.dataset.localeEn : element.dataset.localeZh;
     });
   }
 
@@ -108,6 +124,7 @@
       restore(document.documentElement);
     }
     renderToggle();
+    document.dispatchEvent(new CustomEvent("jsyslocalechange", { detail: { language: english ? "en" : "zh" } }));
   }
 
   async function load() {
@@ -123,13 +140,17 @@
       document.documentElement.lang = "en";
       document.title = englishInstance ? "J_Sys Lucky Draw" : englishText(document.title);
       translate(document.documentElement);
+    } else {
+      restore(document.documentElement);
     }
     renderToggle();
     new MutationObserver(records => records.forEach(record => record.addedNodes.forEach(node => {
       if (node.nodeType === Node.TEXT_NODE && english) translateTextNode(node);
+      if (node.nodeType === Node.TEXT_NODE && !english) restoreTextNode(node);
       if (node.nodeType === Node.ELEMENT_NODE && english) translate(node);
+      if (node.nodeType === Node.ELEMENT_NODE && !english) restore(node);
     }))).observe(document.body, { childList: true, subtree: true });
   }
 
-  window.JSysLocale = { load, isEnglish: () => english, isEnglishInstance: () => englishInstance, toEnglish: englishText, translate, setLanguage };
+  window.JSysLocale = { load, isEnglish: () => english, isEnglishInstance: () => englishInstance, toChinese: chineseText, toEnglish: englishText, translate, setLanguage };
 })();

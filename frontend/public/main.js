@@ -161,7 +161,7 @@ async function showSettings() {
 }
 
 function configureAccountMode() {
-  chineseAccountMode = !window.JSysLocale.isEnglish();
+  chineseAccountMode = !window.JSysLocale.isEnglishInstance();
   if (chineseAccountMode) {
     loginTitle.textContent = "账号登录";
     loginIdentityLabel.textContent = "邮箱";
@@ -1331,7 +1331,7 @@ async function bootAdmin() {
 async function boot() {
   await window.JSysLocale.load();
   configureAccountMode();
-  if (window.JSysLocale.isEnglish()) {
+  if (window.JSysLocale.isEnglishInstance()) {
     defaults = Object.fromEntries(Object.entries(defaults).map(([key, value]) => [
       key,
       typeof value === "string" ? value.split("\n").map(window.JSysLocale.toEnglish).join("\n") : value

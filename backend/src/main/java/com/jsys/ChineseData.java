@@ -27,6 +27,7 @@ import javax.crypto.spec.PBEKeySpec;
 final class ChineseData {
     static final String CHINA_WORKSPACE_NAME = "中国账号";
     private static final String MIGRATION_KEY = "legacy-tsv-import-v1";
+    private static final String PLATFORM_ADMIN_KEY = "platform-admin-seed-v1";
     private static final int PASSWORD_ITERATIONS = 210_000;
     private static final int PASSWORD_KEY_LENGTH = 256;
 
@@ -46,10 +47,6 @@ final class ChineseData {
     }
 
     ChinaAccount bootstrapChinaAccount(Path legacyDataDirectory, String email, String password) throws IOException {
-        if (email == null || email.isBlank() || password == null || password.isBlank()) {
-            throw new IOException("CHINA_ACCOUNT_EMAIL and CHINA_ACCOUNT_PASSWORD are required for the Chinese instance");
-        }
-
         try (Connection connection = open()) {
             connection.setAutoCommit(false);
             try {
@@ -58,6 +55,9 @@ final class ChineseData {
                     ChinaAccount account = findChinaAccount(connection);
                     connection.commit();
                     return account;
+                }
+                if (!validEmail(email) || password == null || password.length() < 8 || password.length() > 128) {
+                    throw new IOException("CHINA_ACCOUNT_EMAIL and CHINA_ACCOUNT_PASSWORD are required for the first Chinese-instance migration");
                 }
 
                 String accountId = UUID.randomUUID().toString();
@@ -96,6 +96,40 @@ final class ChineseData {
                     throw new IOException("Unable to migrate legacy TSV data", sqlError);
                 }
                 throw new IOException("Unable to migrate legacy TSV data", error);
+            }
+        } catch (SQLException error) {
+            throw new IOException("Unable to open the Chinese-instance SQLite database", error);
+        }
+    }
+
+    void bootstrapPlatformAdministrator(String email, String password) throws IOException {
+        try (Connection connection = open()) {
+            connection.setAutoCommit(false);
+            try {
+                if (metadata(connection, PLATFORM_ADMIN_KEY).isPresent()) {
+                    connection.commit();
+                    return;
+                }
+                if (!validEmail(email) || password == null || password.length() < 8 || password.length() > 128) {
+                    throw new IOException("PLATFORM_ADMIN_EMAIL and PLATFORM_ADMIN_PASSWORD are required for the first Chinese-instance start");
+                }
+                String identityId = UUID.randomUUID().toString();
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "INSERT INTO identities(id, account_id, role, email, password_hash, created_at) VALUES (?, NULL, 'platform_admin', ?, ?, ?)")) {
+                    statement.setString(1, identityId);
+                    statement.setString(2, email);
+                    statement.setString(3, passwordHash(password));
+                    statement.setString(4, Instant.now().toString());
+                    statement.executeUpdate();
+                }
+                putMetadata(connection, PLATFORM_ADMIN_KEY, Instant.now().toString());
+                platformAudit(connection, email, "seed_platform_administrator", identityId, "success");
+                connection.commit();
+            } catch (Exception error) {
+                connection.rollback();
+                if (error instanceof IOException ioError) throw ioError;
+                if (error instanceof SQLException sqlError) throw new IOException("Unable to seed Platform Administrator", sqlError);
+                throw new IOException("Unable to seed Platform Administrator", error);
             }
         } catch (SQLException error) {
             throw new IOException("Unable to open the Chinese-instance SQLite database", error);
@@ -153,6 +187,94 @@ final class ChineseData {
         } catch (SQLException error) {
             throw new IOException("Unable to validate China Account Owner session", error);
         }
+    }
+
+    synchronized Optional<PlatformSession> loginPlatformAdministrator(String email, String password) throws IOException {
+        if (email == null || password == null) return Optional.empty();
+        try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(
+                "SELECT id, email, password_hash FROM identities WHERE role = 'platform_admin' AND email = ?")) {
+            statement.setString(1, email);
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next() || !passwordMatches(password, result.getString("password_hash"))) return Optional.empty();
+                String token = UUID.randomUUID().toString();
+                try (PreparedStatement session = connection.prepareStatement(
+                        "INSERT INTO sessions(token, identity_id, expires_at, revoked_at) VALUES (?, ?, ?, NULL)")) {
+                    session.setString(1, token);
+                    session.setString(2, result.getString("id"));
+                    session.setString(3, Instant.now().plus(7, ChronoUnit.DAYS).toString());
+                    session.executeUpdate();
+                }
+                platformAudit(connection, result.getString("email"), "platform_login", result.getString("id"), "success");
+                return Optional.of(new PlatformSession(token, result.getString("id"), result.getString("email")));
+            }
+        } catch (SQLException error) {
+            throw new IOException("Unable to sign in Platform Administrator", error);
+        }
+    }
+
+    synchronized Optional<PlatformSession> platformForSession(String token) throws IOException {
+        if (token == null || token.isBlank()) return Optional.empty();
+        String query = "SELECT s.token, i.id AS identity_id, i.email, s.expires_at, s.revoked_at "
+                + "FROM sessions s JOIN identities i ON i.id = s.identity_id "
+                + "WHERE s.token = ? AND i.role = 'platform_admin'";
+        try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(query)) {
+            statement.setString(1, token);
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next() || result.getString("revoked_at") != null
+                        || !Instant.parse(result.getString("expires_at")).isAfter(Instant.now())) return Optional.empty();
+                return Optional.of(new PlatformSession(result.getString("token"), result.getString("identity_id"), result.getString("email")));
+            }
+        } catch (SQLException error) {
+            throw new IOException("Unable to validate Platform Administrator session", error);
+        }
+    }
+
+    synchronized List<BranchAccountSummary> branchAccounts() throws IOException {
+        String query = "SELECT a.id, a.workspace_name, a.status, i.email FROM branch_accounts a "
+                + "JOIN identities i ON i.account_id = a.id AND i.role = 'owner' ORDER BY a.created_at";
+        try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(query); ResultSet result = statement.executeQuery()) {
+            List<BranchAccountSummary> accounts = new ArrayList<>();
+            while (result.next()) accounts.add(new BranchAccountSummary(result.getString("id"), result.getString("workspace_name"), result.getString("email"), result.getString("status")));
+            return accounts;
+        } catch (SQLException error) { throw new IOException("Unable to load Branch Accounts", error); }
+    }
+
+    synchronized boolean setBranchAccountStatus(PlatformSession platform, String accountId, boolean active) throws IOException {
+        try (Connection connection = open()) {
+            connection.setAutoCommit(false);
+            try (PreparedStatement update = connection.prepareStatement("UPDATE branch_accounts SET status = ? WHERE id = ?")) {
+                update.setString(1, active ? "active" : "disabled");
+                update.setString(2, accountId);
+                if (update.executeUpdate() != 1) { connection.rollback(); return false; }
+            }
+            if (!active) {
+                try (PreparedStatement revoke = connection.prepareStatement(
+                        "UPDATE sessions SET revoked_at = ? WHERE identity_id IN (SELECT id FROM identities WHERE account_id = ?) AND revoked_at IS NULL")) {
+                    revoke.setString(1, Instant.now().toString()); revoke.setString(2, accountId); revoke.executeUpdate();
+                }
+            }
+            platformAudit(connection, platform.email(), active ? "enable_account" : "disable_account", accountId, "success");
+            connection.commit();
+            return true;
+        } catch (SQLException error) { throw new IOException("Unable to update Branch Account status", error); }
+    }
+
+    synchronized boolean resetBranchOwnerPassword(PlatformSession platform, String accountId, String newPassword) throws RegistrationException, IOException {
+        if (newPassword == null || newPassword.length() < 8 || newPassword.length() > 128) throw new RegistrationException("Password must contain 8 to 128 characters");
+        try (Connection connection = open()) {
+            connection.setAutoCommit(false);
+            try (PreparedStatement password = connection.prepareStatement("UPDATE identities SET password_hash = ? WHERE account_id = ? AND role = 'owner'")) {
+                password.setString(1, passwordHash(newPassword)); password.setString(2, accountId);
+                if (password.executeUpdate() != 1) { connection.rollback(); return false; }
+            }
+            try (PreparedStatement revoke = connection.prepareStatement(
+                    "UPDATE sessions SET revoked_at = ? WHERE identity_id IN (SELECT id FROM identities WHERE account_id = ?) AND revoked_at IS NULL")) {
+                revoke.setString(1, Instant.now().toString()); revoke.setString(2, accountId); revoke.executeUpdate();
+            }
+            platformAudit(connection, platform.email(), "reset_owner_password", accountId, "success");
+            connection.commit();
+            return true;
+        } catch (SQLException error) { throw new IOException("Unable to reset Branch Account Owner password", error); }
     }
 
     synchronized void logout(String token) throws IOException {
@@ -242,6 +364,21 @@ final class ChineseData {
         return readRecords("event_records", accountId, App.Event::fromLine);
     }
 
+    synchronized Optional<String> publicEventAccountId(String eventId) throws IOException {
+        String query = "SELECT e.account_id FROM event_records e JOIN branch_accounts a ON a.id = e.account_id "
+                + "WHERE e.id = ? AND a.status = 'active'";
+        try (Connection connection = open(); PreparedStatement statement = connection.prepareStatement(query)) {
+            statement.setString(1, eventId);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? Optional.of(result.getString("account_id")) : Optional.empty();
+            }
+        } catch (SQLException error) { throw new IOException("Unable to validate public activity", error); }
+    }
+
+    synchronized boolean isPublicEventAvailable(String eventId) throws IOException {
+        return publicEventAccountId(eventId).isPresent();
+    }
+
     synchronized void replaceEvents(String accountId, List<App.Event> events) throws IOException {
         try (Connection connection = open()) {
             connection.setAutoCommit(false);
@@ -314,6 +451,7 @@ final class ChineseData {
             statement.executeUpdate("CREATE TABLE IF NOT EXISTS winner_records (id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES branch_accounts(id), payload TEXT NOT NULL)");
             statement.executeUpdate("CREATE TABLE IF NOT EXISTS operation_records (id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES branch_accounts(id), payload TEXT NOT NULL)");
             statement.executeUpdate("CREATE TABLE IF NOT EXISTS account_audits (id TEXT PRIMARY KEY, account_id TEXT REFERENCES branch_accounts(id), actor TEXT NOT NULL, action TEXT NOT NULL, target TEXT NOT NULL, result TEXT NOT NULL, created_at TEXT NOT NULL)");
+            statement.executeUpdate("CREATE TABLE IF NOT EXISTS platform_audits (id TEXT PRIMARY KEY, actor TEXT NOT NULL, action TEXT NOT NULL, target TEXT NOT NULL, result TEXT NOT NULL, created_at TEXT NOT NULL)");
             statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_event_records_account ON event_records(account_id)");
             statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_submission_records_account ON submission_records(account_id)");
             statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_winner_records_account ON winner_records(account_id)");
@@ -453,6 +591,19 @@ final class ChineseData {
         }
     }
 
+    private static void platformAudit(Connection connection, String actor, String action, String target, String result) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "INSERT INTO platform_audits(id, actor, action, target, result, created_at) VALUES (?, ?, ?, ?, ?, ?)")) {
+            statement.setString(1, UUID.randomUUID().toString());
+            statement.setString(2, actor);
+            statement.setString(3, action);
+            statement.setString(4, target);
+            statement.setString(5, result);
+            statement.setString(6, Instant.now().toString());
+            statement.executeUpdate();
+        }
+    }
+
     private static String passwordHash(String password) throws IOException {
         byte[] salt = new byte[16];
         new SecureRandom().nextBytes(salt);
@@ -497,6 +648,12 @@ final class ChineseData {
     }
 
     record OwnerSettings(String workspaceName, String email) {
+    }
+
+    record PlatformSession(String token, String identityId, String email) {
+    }
+
+    record BranchAccountSummary(String id, String workspaceName, String email, String status) {
     }
 
     static final class RegistrationException extends Exception { RegistrationException(String message) { super(message); } }

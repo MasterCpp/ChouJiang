@@ -90,11 +90,15 @@ public final class App {
                 System.getenv("CHINA_ACCOUNT_EMAIL"),
                 System.getenv("CHINA_ACCOUNT_PASSWORD")
         );
+        data.bootstrapPlatformAdministrator(
+                System.getenv("PLATFORM_ADMIN_EMAIL"),
+                System.getenv("PLATFORM_ADMIN_PASSWORD")
+        );
         EventStore publicEventStore = new EventStore(data, null);
         SubmissionStore publicSubmissionStore = new SubmissionStore(data, null);
         WinnerStore publicWinnerStore = new WinnerStore(data, null);
 
-        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), HTTP_QUEUE_CAPACITY);
         server.createContext("/api/health", exchange -> safe(exchange, () -> handleHealth(exchange)));
         server.createContext("/api/config", exchange -> safe(exchange, () -> handlePublicConfig(exchange)));
         server.createContext("/api/admin/login", exchange -> safe(exchange, () -> handleChineseLogin(exchange, data)));
@@ -103,7 +107,14 @@ public final class App {
         server.createContext("/api/admin/me", exchange -> safe(exchange, () -> handleChineseMe(exchange, data)));
         server.createContext("/api/admin/settings", exchange -> safe(exchange, () -> handleChineseSettings(exchange, data)));
         server.createContext("/api/admin/events", exchange -> safe(exchange, () -> handleChineseOwnerEvents(exchange, data)));
-        server.createContext("/api/events", exchange -> safe(exchange, () -> handlePublicEvents(exchange, publicEventStore, publicSubmissionStore, publicWinnerStore)));
+        server.createContext("/api/platform/login", exchange -> safe(exchange, () -> handlePlatformLogin(exchange, data)));
+        server.createContext("/api/platform/logout", exchange -> safe(exchange, () -> handleChineseLogout(exchange, data)));
+        server.createContext("/api/platform/accounts", exchange -> safe(exchange, () -> handlePlatformAccounts(exchange, data)));
+        server.createContext("/api/events", exchange -> safe(exchange, () -> handleChinesePublicEvents(exchange, data, publicEventStore, publicSubmissionStore, publicWinnerStore)));
+        server.createContext("/platform", exchange -> safe(exchange, () -> servePlatformPage(exchange, webRoot)));
+        server.createContext("/join", exchange -> safe(exchange, () -> handleChinesePublicPage(exchange, data, webRoot)));
+        server.createContext("/results", exchange -> safe(exchange, () -> handleChinesePublicPage(exchange, data, webRoot)));
+        server.createContext("/screen", exchange -> safe(exchange, () -> handleChinesePublicPage(exchange, data, webRoot)));
         server.createContext("/", exchange -> safe(exchange, () -> serveStatic(exchange, webRoot)));
         ExecutorService requestExecutor = createRequestExecutor();
         server.setExecutor(requestExecutor);
@@ -235,6 +246,88 @@ public final class App {
             return;
         }
         send(exchange, 405, "application/json", "{\"error\":\"Method not allowed\"}");
+    }
+
+    private static void handlePlatformLogin(HttpExchange exchange, ChineseData data) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) { send(exchange, 405, "application/json", "{\"error\":\"Method not allowed\"}"); return; }
+        Map<String, String> form = readForm(exchange);
+        Optional<ChineseData.PlatformSession> session = data.loginPlatformAdministrator(form.get("email"), form.get("password"));
+        if (session.isEmpty()) { send(exchange, 401, "application/json", "{\"error\":\"Invalid email or password\"}"); return; }
+        ChineseData.PlatformSession platform = session.get();
+        exchange.getResponseHeaders().add("Set-Cookie", "jsys_session=" + platform.token() + "; Path=/; HttpOnly; SameSite=Lax");
+        send(exchange, 200, "application/json", "{\"ok\":true,\"email\":\"" + json(platform.email()) + "\"}");
+    }
+
+    private static void handlePlatformAccounts(HttpExchange exchange, ChineseData data) throws IOException {
+        Optional<String> token = readSession(exchange);
+        Optional<ChineseData.PlatformSession> session = token.isEmpty() ? Optional.empty() : data.platformForSession(token.get());
+        if (session.isEmpty()) { send(exchange, 401, "application/json", "{\"error\":\"Authentication required\"}"); return; }
+        String prefix = "/api/platform/accounts";
+        String path = exchange.getRequestURI().getPath();
+        String suffix = path.length() > prefix.length() ? path.substring(prefix.length()) : "";
+        if (suffix.isEmpty() || "/".equals(suffix)) {
+            if (!"GET".equals(exchange.getRequestMethod())) { send(exchange, 405, "application/json", "{\"error\":\"Method not allowed\"}"); return; }
+            send(exchange, 200, "application/json", branchAccountsJson(data.branchAccounts()));
+            return;
+        }
+        String target = suffix.startsWith("/") ? suffix.substring(1) : suffix;
+        int separator = target.lastIndexOf('/');
+        if (separator < 1 || !"POST".equals(exchange.getRequestMethod())) { send(exchange, 404, "application/json", "{\"error\":\"Not found\"}"); return; }
+        String accountId = target.substring(0, separator);
+        String action = target.substring(separator + 1);
+        if ("disable".equals(action) || "enable".equals(action)) {
+            boolean found = data.setBranchAccountStatus(session.get(), accountId, "enable".equals(action));
+            if (!found) { send(exchange, 404, "application/json", "{\"error\":\"Branch Account not found\"}"); return; }
+            send(exchange, 200, "application/json", "{\"ok\":true}");
+            return;
+        }
+        if ("password".equals(action)) {
+            try {
+                boolean found = data.resetBranchOwnerPassword(session.get(), accountId, readForm(exchange).get("newPassword"));
+                if (!found) { send(exchange, 404, "application/json", "{\"error\":\"Branch Account not found\"}"); return; }
+                send(exchange, 200, "application/json", "{\"ok\":true}");
+            } catch (ChineseData.RegistrationException error) {
+                send(exchange, 400, "application/json", "{\"error\":\"" + json(error.getMessage()) + "\"}");
+            }
+            return;
+        }
+        send(exchange, 404, "application/json", "{\"error\":\"Not found\"}");
+    }
+
+    private static void handleChinesePublicEvents(HttpExchange exchange, ChineseData data, EventStore eventStore, SubmissionStore submissionStore, WinnerStore winnerStore) throws IOException {
+        String prefix = "/api/events";
+        String path = exchange.getRequestURI().getPath();
+        String suffix = path.length() > prefix.length() ? path.substring(prefix.length()) : "";
+        String target = suffix.startsWith("/") ? suffix.substring(1) : suffix;
+        String eventId = target.replaceFirst("/(submissions|results)$", "");
+        Optional<String> accountId = eventId.isBlank() || eventId.contains("/") ? Optional.empty() : data.publicEventAccountId(eventId);
+        if (accountId.isEmpty()) {
+            send(exchange, 404, "application/json", "{\"error\":\"Event not found\"}");
+            return;
+        }
+        if (target.endsWith("/submissions")) {
+            if (!"POST".equals(exchange.getRequestMethod())) {
+                send(exchange, 405, "application/json", "{\"error\":\"Method not allowed\"}");
+                return;
+            }
+            handleCreateSubmission(exchange, eventStore, new SubmissionStore(data, accountId.get()), eventId);
+            return;
+        }
+        handlePublicEvents(exchange, eventStore, submissionStore, winnerStore);
+    }
+
+    private static void handleChinesePublicPage(HttpExchange exchange, ChineseData data, Path webRoot) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod()) && !"HEAD".equals(exchange.getRequestMethod())) {
+            send(exchange, 405, "text/plain; charset=utf-8", "Method not allowed");
+            return;
+        }
+        String path = exchange.getRequestURI().getPath();
+        String[] parts = path.split("/");
+        if (parts.length != 3 || parts[2].isBlank() || !data.isPublicEventAvailable(parts[2])) {
+            send(exchange, 404, "text/plain; charset=utf-8", "Not found");
+            return;
+        }
+        serveStatic(exchange, webRoot);
     }
 
     private static void handleLogout(HttpExchange exchange) throws IOException {
@@ -965,6 +1058,28 @@ public final class App {
         }
     }
 
+    private static void servePlatformPage(HttpExchange exchange, Path webRoot) throws IOException {
+        String path = exchange.getRequestURI().getPath();
+        if (!("/platform".equals(path) || "/platform/".equals(path))) {
+            send(exchange, 404, "text/plain; charset=utf-8", "Not found");
+            return;
+        }
+        if (!"GET".equals(exchange.getRequestMethod()) && !"HEAD".equals(exchange.getRequestMethod())) {
+            send(exchange, 405, "text/plain; charset=utf-8", "Method not allowed");
+            return;
+        }
+        Path page = webRoot.resolve("platform.html");
+        byte[] body = Files.readAllBytes(page);
+        exchange.getResponseHeaders().set("Cache-Control", "no-store");
+        exchange.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
+        exchange.sendResponseHeaders(200, "HEAD".equals(exchange.getRequestMethod()) ? -1 : body.length);
+        if (!"HEAD".equals(exchange.getRequestMethod())) {
+            try (OutputStream output = exchange.getResponseBody()) { output.write(body); }
+        } else {
+            exchange.close();
+        }
+    }
+
     private static Path resolveStaticPath(Path webRoot, String requestPath) {
         String path = requestPath == null || requestPath.equals("/") ? "/index.html" : requestPath;
         path = path.replace('\\', '/');
@@ -1042,6 +1157,19 @@ public final class App {
             builder.append(eventJson(events.get(i)));
         }
         return builder.append(']').toString();
+    }
+
+    private static String branchAccountsJson(List<ChineseData.BranchAccountSummary> accounts) {
+        StringBuilder body = new StringBuilder("[");
+        for (int index = 0; index < accounts.size(); index++) {
+            if (index > 0) body.append(',');
+            ChineseData.BranchAccountSummary account = accounts.get(index);
+            body.append("{\"id\":\"").append(json(account.id())).append("\",")
+                    .append("\"workspaceName\":\"").append(json(account.workspaceName())).append("\",")
+                    .append("\"email\":\"").append(json(account.email())).append("\",")
+                    .append("\"status\":\"").append(json(account.status())).append("\"}");
+        }
+        return body.append(']').toString();
     }
 
     private static String submissionsJson(List<Submission> submissions) {

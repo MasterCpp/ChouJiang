@@ -675,6 +675,15 @@ td {
   display: none !important;
 }
 
+.language-switch {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 20;
+  min-width: 88px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.22);
+}
+
 @media (max-width: 900px) {
   .app-shell {
     width: min(100% - 24px, 720px);

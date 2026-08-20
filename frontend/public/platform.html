@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>J_Sys 平台管理员</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">J_Sys</p>
+          <h1>平台管理员</h1>
+        </div>
+        <div class="topbar-actions hidden" id="platformActions">
+          <span id="platformSession" class="session-label"></span>
+          <button id="platformLogout" class="secondary" type="button">退出</button>
+        </div>
+      </header>
+
+      <section id="platformLoginView" class="panel narrow">
+        <h2>内部账号管理入口</h2>
+        <form id="platformLoginForm" class="form-grid">
+          <label>邮箱 <input name="email" type="email" autocomplete="username" required /></label>
+          <label>密码 <input name="password" type="password" autocomplete="current-password" required /></label>
+          <button type="submit">登录</button>
+        </form>
+        <p id="platformLoginMessage" class="message"></p>
+      </section>
+
+      <section id="platformAccountsView" class="panel hidden">
+        <div class="section-head">
+          <div>
+            <h2>分公司账号</h2>
+            <p>此处只提供账号生命周期操作，不显示任何活动、报名、中奖或导出数据。</p>
+          </div>
+          <button id="platformRefresh" class="secondary" type="button">刷新</button>
+        </div>
+        <div id="platformAccounts" class="event-list"></div>
+        <p id="platformMessage" class="message"></p>
+      </section>
+    </main>
+    <script src="/locale.js"></script>
+    <script src="/platform.js"></script>
+  </body>
+</html>

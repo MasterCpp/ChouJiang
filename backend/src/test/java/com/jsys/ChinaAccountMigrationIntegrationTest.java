@@ -11,9 +11,13 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.Comparator;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 public final class ChinaAccountMigrationIntegrationTest {
     private ChinaAccountMigrationIntegrationTest() {
@@ -22,6 +26,8 @@ public final class ChinaAccountMigrationIntegrationTest {
     public static void main(String[] args) throws Exception {
         chinaMigrationKeepsOwnerAndPublicActivityAvailable();
         branchAccountsAreIsolated();
+        platformAdministratorManagesLifecycleWithoutBusinessAccess();
+        chineseMultiAccountHandlesConcurrentPublicRequests();
         englishInstanceKeepsLegacyAuthenticationAndTsvStorage();
     }
 
@@ -110,6 +116,91 @@ public final class ChinaAccountMigrationIntegrationTest {
         }
     }
 
+    private static void platformAdministratorManagesLifecycleWithoutBusinessAccess() throws Exception {
+        Path workDir = Files.createTempDirectory("jsys-platform-admin-");
+        Process process = null;
+        try {
+            writeLegacyFixture(workDir.resolve("data"));
+            int port = availablePort();
+            process = startChineseInstance(workDir, port);
+            waitForHealth(port);
+            HttpClient client = HttpClient.newHttpClient();
+
+            HttpResponse<String> owner = post(client, port, "/api/admin/register", registration("Lifecycle Team", "lifecycle@example.com", "OwnerPass123"));
+            String ownerSession = owner.headers().firstValue("set-cookie").orElseThrow(() -> new AssertionError("Missing owner session"));
+            HttpResponse<String> event = postWithCookie(client, port, "/api/admin/events", ownerSession, eventForm("Lifecycle event"));
+            assertEquals(201, event.statusCode(), "Owner can create an event before disablement");
+            String eventId = jsonString(event.body(), "id");
+
+            HttpResponse<String> platformLogin = post(client, port, "/api/platform/login", "email=platform.admin%40example.com&password=PlatformPass123");
+            assertEquals(200, platformLogin.statusCode(), "Seeded Platform Administrator can sign in");
+            String platformSession = platformLogin.headers().firstValue("set-cookie").orElseThrow(() -> new AssertionError("Missing platform session"));
+            HttpResponse<String> accounts = get(client, port, "/api/platform/accounts", platformSession);
+            assertEquals(200, accounts.statusCode(), "Platform Administrator can list account basics");
+            assertContains(accounts.body(), "Lifecycle Team", "Platform Administrator can view workspace name");
+            assertContains(accounts.body(), "lifecycle@example.com", "Platform Administrator can view owner email");
+            String accountId = idForEmail(accounts.body(), "lifecycle@example.com");
+            assertEquals(401, get(client, port, "/api/admin/events", platformSession).statusCode(), "Platform Administrator cannot access activity data");
+
+            assertEquals(200, postWithCookie(client, port, "/api/platform/accounts/" + accountId + "/disable", platformSession).statusCode(), "Platform Administrator can disable an account");
+            assertEquals(401, get(client, port, "/api/admin/events", ownerSession).statusCode(), "Disablement revokes Owner sessions");
+            assertEquals(404, get(client, port, "/api/events/" + eventId, null).statusCode(), "Disablement closes public activity pages");
+            assertEquals(404, get(client, port, "/join/" + eventId, null).statusCode(), "Disablement closes the public registration page route");
+
+            assertEquals(200, postWithCookie(client, port, "/api/platform/accounts/" + accountId + "/enable", platformSession).statusCode(), "Platform Administrator can re-enable an account");
+            assertEquals(200, get(client, port, "/join/" + eventId, null).statusCode(), "Re-enablement restores the public registration page route");
+            assertEquals(200, post(client, port, "/api/admin/login", "email=lifecycle%40example.com&password=OwnerPass123").statusCode(), "Owner can sign in again after re-enable");
+            assertEquals(200, postWithCookie(client, port, "/api/platform/accounts/" + accountId + "/password", platformSession, form("newPassword", "ResetPass123")).statusCode(), "Platform Administrator can set a replacement password");
+            assertEquals(401, post(client, port, "/api/admin/login", "email=lifecycle%40example.com&password=OwnerPass123").statusCode(), "Password reset invalidates the previous password");
+            assertEquals(200, post(client, port, "/api/admin/login", "email=lifecycle%40example.com&password=ResetPass123").statusCode(), "Owner can sign in with the replacement password");
+            assertEquals(200, get(client, port, "/platform", null).statusCode(), "Platform Administrator has a separate internal page");
+        } finally {
+            if (process != null) { process.destroyForcibly(); process.waitFor(); }
+            deleteTree(workDir);
+        }
+    }
+
+    private static void chineseMultiAccountHandlesConcurrentPublicRequests() throws Exception {
+        Path workDir = Files.createTempDirectory("jsys-chinese-concurrency-");
+        Process process = null;
+        try {
+            writeLegacyFixture(workDir.resolve("data"));
+            int port = availablePort();
+            process = startChineseInstance(workDir, port);
+            waitForHealth(port);
+            HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+            HttpResponse<String> owner = post(client, port, "/api/admin/register", registration("Concurrency Team", "concurrency@example.com", "OwnerPass123"));
+            String ownerSession = owner.headers().firstValue("set-cookie").orElseThrow(() -> new AssertionError("Missing concurrency owner session"));
+            HttpResponse<String> event = postWithCookie(client, port, "/api/admin/events", ownerSession, eventForm("Concurrency event"));
+            assertEquals(201, event.statusCode(), "Concurrency test owner can create its event");
+            String eventId = jsonString(event.body(), "id");
+
+            List<CompletableFuture<HttpResponse<String>>> reads = new ArrayList<>();
+            for (int index = 0; index < 100; index++) {
+                reads.add(client.sendAsync(HttpRequest.newBuilder(uri(port, "/api/events/" + eventId)).timeout(Duration.ofSeconds(15)).GET().build(), HttpResponse.BodyHandlers.ofString()));
+            }
+            for (CompletableFuture<HttpResponse<String>> read : reads) {
+                assertEquals(200, read.get().statusCode(), "Concurrent public event read succeeds");
+            }
+
+            List<CompletableFuture<HttpResponse<String>>> registrations = new ArrayList<>();
+            for (int index = 0; index < 100; index++) {
+                String body = form("name", "Load " + index, "jobTitle", "Tester", "email", "load" + index + "@example.com",
+                        "satisfactionScore", "8", "topicAnswer", "A", "futureQuestion", "Load test", "answer_score", "8", "answer_topic", "A", "answer_future", "Load test");
+                registrations.add(client.sendAsync(HttpRequest.newBuilder(uri(port, "/api/events/" + eventId + "/submissions"))
+                        .timeout(Duration.ofSeconds(15)).header("Content-Type", "application/x-www-form-urlencoded")
+                        .POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString()));
+            }
+            for (CompletableFuture<HttpResponse<String>> registration : registrations) {
+                assertEquals(201, registration.get().statusCode(), "Concurrent unique-email registration succeeds");
+            }
+            assertContains(get(client, port, "/api/admin/events/" + eventId + "/submissions", ownerSession).body(), "load99@example.com", "All concurrent registrations remain visible to their Owner");
+        } finally {
+            if (process != null) { process.destroyForcibly(); process.waitFor(); }
+            deleteTree(workDir);
+        }
+    }
+
     private static void englishInstanceKeepsLegacyAuthenticationAndTsvStorage() throws Exception {
         Path workDir = Files.createTempDirectory("jsys-english-legacy-");
         Process process = null;
@@ -138,6 +229,8 @@ public final class ChinaAccountMigrationIntegrationTest {
         ProcessBuilder builder = baseProcess(workDir, port);
         builder.environment().put("CHINA_ACCOUNT_EMAIL", "china.owner@example.com");
         builder.environment().put("CHINA_ACCOUNT_PASSWORD", "ChinaPass123");
+        builder.environment().put("PLATFORM_ADMIN_EMAIL", "platform.admin@example.com");
+        builder.environment().put("PLATFORM_ADMIN_PASSWORD", "PlatformPass123");
         return builder.start();
     }
 
@@ -150,6 +243,11 @@ public final class ChinaAccountMigrationIntegrationTest {
     }
 
     private static ProcessBuilder baseProcess(Path workDir, int port) {
+        try {
+            copyTree(Path.of("frontend").toAbsolutePath().normalize(), workDir.resolve("frontend"));
+        } catch (IOException error) {
+            throw new IllegalStateException("Unable to prepare frontend fixture", error);
+        }
         String classpath = absoluteClasspath();
         ProcessBuilder builder = new ProcessBuilder(
                 Path.of(System.getProperty("java.home"), "bin", "java").toString(),
@@ -180,6 +278,20 @@ public final class ChinaAccountMigrationIntegrationTest {
         Files.writeString(dataDir.resolve("submissions.tsv"), "", StandardCharsets.UTF_8);
         Files.writeString(dataDir.resolve("winners.tsv"), "", StandardCharsets.UTF_8);
         Files.writeString(dataDir.resolve("operations.tsv"), "", StandardCharsets.UTF_8);
+    }
+
+    private static void copyTree(Path source, Path target) throws IOException {
+        try (var paths = Files.walk(source)) {
+            for (Path path : paths.toList()) {
+                Path destination = target.resolve(source.relativize(path));
+                if (Files.isDirectory(path)) {
+                    Files.createDirectories(destination);
+                } else {
+                    Files.createDirectories(destination.getParent());
+                    Files.copy(path, destination, StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
+        }
     }
 
     private static String eventLine() {
@@ -255,6 +367,17 @@ public final class ChinaAccountMigrationIntegrationTest {
         int valueStart = start + prefix.length();
         int end = body.indexOf('"', valueStart);
         if (end < 0) throw new AssertionError("Unterminated JSON key: " + key);
+        return body.substring(valueStart, end);
+    }
+
+    private static String idForEmail(String body, String email) {
+        int emailIndex = body.indexOf("\"email\":\"" + email + "\"");
+        if (emailIndex < 0) throw new AssertionError("Missing account email: " + email);
+        int idStart = body.lastIndexOf("\"id\":\"", emailIndex);
+        if (idStart < 0) throw new AssertionError("Missing account ID for: " + email);
+        int valueStart = idStart + "\"id\":\"".length();
+        int end = body.indexOf('"', valueStart);
+        if (end < 0) throw new AssertionError("Unterminated account ID for: " + email);
         return body.substring(valueStart, end);
     }
 

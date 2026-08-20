@@ -14,7 +14,8 @@ J_Sys is a multi-event lucky draw system for small online or hybrid meetings. Ea
 - Base registration fields are required.
 - Each event can configure its own additional registration questions.
 - Dynamic registration questions support single choice, multiple choice, text answer, and 1-10 score.
-- Chinese and English content appear together on the same page; no language switch is required.
+- The existing bilingual/Chinese deployment is the in-scope product for the next account upgrade. It will offer a Chinese/English UI switch while preserving user-entered event and registration content.
+- The separate English deployment remains independent and is out of scope for this upgrade.
 - Customer will provide or approve final bilingual copy.
 - The event creator sets the final winner count before the draw.
 - One prize category in the first version.
@@ -26,7 +27,19 @@ J_Sys is a multi-event lucky draw system for small online or hybrid meetings. Ea
 - First version uses a simple rolling big-screen animation.
 - Both QR code and copyable registration link are required.
 - After registration, participants can open a public "View Winners" result page for the event.
-- One administrator login is enough for the first version.
+- The next upgrade introduces independent Branch Accounts for one company. Each Branch Account owns its activities and related data; one Branch Account must never view or modify another Branch Account's activities.
+- Branch Accounts are self-registered with an email address, password, and a free-text workspace name. The name is required, trims leading and trailing whitespace, and contains 1 to 100 characters; it may contain Chinese, English, or other user-entered characters. No country or region field is required, and the system does not enforce country-level uniqueness.
+- The Branch Account registration page accepts any email address; there is no company-domain whitelist or approval gate in the first release. Email uniqueness is case-sensitive.
+- A Branch Account password must contain 8 to 128 characters. Passwords are stored only as hashes; no character-class complexity rule is required.
+- A Platform Administrator is an internal operator, outside every Branch Account. Platform Administrators can disable or re-enable accounts and directly set a replacement password for offline communication to the Account Owner, but Branch Accounts cannot delete themselves.
+- The Platform Administrator uses a separate internal entry URL. Ordinary Branch Account login and registration pages show no platform-administrator entry or link.
+- Disabling a Branch Account invalidates its sessions and temporarily makes all of its public registration, winner-results, and big-screen pages unavailable. Re-enabling restores access; data and audit records remain retained.
+- All legacy activity data will be retained and assigned to the China Account, whose fixed initial workspace name is `中国账号`.
+- Existing public registration links, QR codes, and winner-results links continue to resolve to their migrated China Account activities.
+- The China Account is created during the first migration with a separately supplied Owner email and initial password; it does not inherit the legacy username.
+- The Chinese instance starts its built-in interface copy in Chinese. Every page offers a Chinese/English switch, whose browser-local choice is remembered across pages without being stored on an account or activity. The switch never translates user-entered content.
+- An Account Owner can update its workspace name and password in account settings. Its email remains the immutable global login identifier.
+- Account and business operations retain audit records with actor, target, time, and result. An Account Owner can access only its own business audit records; a Platform Administrator can access only account-management audit records.
 - Data is retained long term: events, form definitions, submissions, winner records, export records, and operation records.
 - Excel export includes all registration fields, questionnaire answers, winner state, and winning time.
 - A short privacy notice is shown on the registration page.
@@ -60,6 +73,40 @@ The editable event copy includes:
 - Required or optional setting
 - Choice options for single-choice and multiple-choice questions
 - Privacy notice copy if needed
+
+## Interface Language
+
+**User**:
+A person who signs in with an email address and password. The exact, case-sensitive email address identifies exactly one User and one Branch Account in the first multi-account release.
+_Avoid_: Account, customer
+
+**Company**:
+The single organization that uses this J_Sys deployment through multiple Branch Accounts.
+_Avoid_: Customer Account, tenant
+
+**Branch Account**:
+An independently registered branch or local-team workspace within the Company that owns activities and all related administrative data. A country is a common example, not a required field. Branch Accounts cannot access one another's administrative data or actions.
+_Avoid_: User, country record, tenant
+
+**Workspace Name**:
+The required, user-entered display name of a Branch Account. It is trimmed of leading and trailing whitespace, contains 1 to 100 characters, identifies a workspace to its owner and Platform Administrator, and is not translated by the interface.
+_Avoid_: Country, locale
+
+**Account Owner**:
+The initial user responsible for a Branch Account in the first multi-account release.
+_Avoid_: Platform administrator
+
+**Platform Administrator**:
+An internal operator who can view Branch Account name, email, and status, then disable or re-enable an account or directly set a replacement password for offline communication to the Account Owner. A Platform Administrator cannot access Branch Account business data.
+_Avoid_: Branch Account Owner
+
+**Interface Language**:
+A browser-local choice between Chinese and English for built-in interface copy. Every page starts in Chinese until the browser has a remembered choice. It is not stored on a Branch Account or activity and never translates user-entered content.
+_Avoid_: Content translation
+
+**Audit Record**:
+An immutable record of an account or business operation, including actor, target, time, and result. Business audit records remain within their owning Branch Account; Platform Administrator audit access is limited to account-management operations.
+_Avoid_: Editable activity data
 
 ## Deployment Understanding
 

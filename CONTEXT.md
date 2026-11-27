@@ -65,6 +65,8 @@ Supported dynamic question types:
 - Text answer
 - Score from 1 to 10
 
+In the Chinese/bilingual instance, score choices are displayed from 10 down to 1, after an empty Select placeholder. Participants must choose a score explicitly; existing answers retain their numeric values. The independent English instance keeps its existing ascending order.
+
 The editable event copy includes:
 
 - Event title

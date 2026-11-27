@@ -855,6 +855,14 @@ function renderJoinUnavailable(message) {
   `;
 }
 
+function renderScoreOptions() {
+  const ascending = window.JSysLocale.isEnglishInstance();
+  return Array.from({ length: 10 }, (_, index) => {
+    const score = ascending ? index + 1 : 10 - index;
+    return `<option value="${score}">${score}</option>`;
+  }).join("");
+}
+
 function registrationSubmittedMarkup(eventId) {
   return `
     <h2 data-locale-zh="报名成功" data-locale-en="Registration submitted">报名成功</h2>
@@ -883,7 +891,7 @@ function renderJoinForm(event) {
         ${escapeHtml(event.satisfactionQuestion)}
         <select name="satisfactionScore" required>
           <option value="" data-locale-zh="请选择" data-locale-en="Select">请选择</option>
-          ${Array.from({ length: 10 }, (_, index) => `<option value="${index + 1}">${index + 1}</option>`).join("")}
+          ${renderScoreOptions()}
         </select>
       </label>
       <fieldset>
@@ -927,7 +935,7 @@ function renderDynamicQuestionInput(question) {
         <span data-user-content>${escapeHtml(question.label)}</span>
         <select name="${escapeHtml(name)}" ${required}>
           <option value="" data-locale-zh="请选择" data-locale-en="Select">请选择</option>
-          ${Array.from({ length: 10 }, (_, index) => `<option value="${index + 1}">${index + 1}</option>`).join("")}
+          ${renderScoreOptions()}
         </select>
       </label>
     `;
